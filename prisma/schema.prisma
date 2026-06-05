@@ -1,0 +1,2082 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model SystemUser {
+  id            Int                      @id @default(autoincrement())
+  userName      String                   @map("user_name") @db.VarChar
+  nsoEmployeeId String?                  @map("nso_employee_id") @db.Char(6)
+  statusId      String                   @map("status_id") @db.Char(1)
+  needSync      String?                  @map("need_sync") @db.Char(1)
+  password      String?
+  logging       Logging[]
+  status        Status                   @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_2084")
+  nsoEmployee   NsoEmployee?             @relation(fields: [nsoEmployeeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_539")
+  roles         SystemUserRoleMatching[]
+
+  @@index([statusId], map: "fkIdx_2084")
+  @@index([nsoEmployeeId], map: "fkIdx_539")
+  @@map("system_user")
+}
+
+model SystemRole {
+  id            String                   @id(map: "PK_system_role") @db.Char(3)
+  nameEng       String                   @map("name_eng") @db.VarChar
+  nameLao       String                   @map("name_lao") @db.VarChar
+  needSync      String?                  @map("need_sync") @db.Char(1)
+  notifications Notification[]
+  users         SystemUserRoleMatching[]
+
+  @@map("system_role")
+}
+
+model SystemUserRoleMatching {
+  systemRoleId String     @map("system_role_id") @db.Char(3)
+  systemUserId Int        @map("system_user_id")
+  needSync     String?    @map("need_sync") @db.Char(1)
+  systemRole   SystemRole @relation(fields: [systemRoleId], references: [id], onUpdate: Restrict, map: "FK_1645")
+  systemUser   SystemUser @relation(fields: [systemUserId], references: [id], onUpdate: Restrict, map: "FK_1648")
+
+  @@id([systemRoleId, systemUserId], map: "PK_system_user_role_matching")
+  @@index([systemRoleId], map: "fkIdx_1645")
+  @@index([systemUserId], map: "fkIdx_1648")
+  @@map("system_user_role_matching")
+}
+
+model Logging {
+  id            Int        @default(autoincrement())
+  loginTime     DateTime   @map("login_time") @db.Timestamp(6)
+  logoutTime    DateTime?  @map("logout_time") @db.Timestamp(6)
+  systemuser_id Int?
+  needSync      String?    @map("need_sync") @db.Char(1)
+  system_user   SystemUser? @relation(fields: [systemuser_id], references: [id], onUpdate: Restrict, map: "FK_536")
+
+  @@id([id])
+  @@index([systemuser_id], map: "fkIdx_536")
+  @@map("logging")
+}
+
+model Status {
+  id                             String                          @id(map: "PK_status") @db.VarChar(2)
+  nameEng                        String                          @map("name_eng") @db.VarChar
+  nameLao                        String                          @map("name_lao") @db.VarChar
+  needSync                       String?                         @map("need_sync") @db.Char(1)
+  accounts                       Accounts[]
+  chartOfAccounts                ChartOfAccounts[]
+  client                         Client[]
+  clientEquitySavingArrangements ClientEquitySavingArrangement[]
+  clientLoanArrangements         ClientLoanArrangement[]
+  clientLoanRules                ClientLoanRule[]
+  clientSavingConditions         ClientSavingCondition[]
+  notifications                  Notification[]
+  nso                            Nso[]
+  nsoEmployees                   NsoEmployee[]
+  nsoFeeModels                   NsoFeeModel[]
+  nsoOffices                     NsoOffice[]
+  nsoVbWsloanArrangements        NsoVbWsloanArrangement[]
+  nsoVbWsloanConditions          NsoVbWsloanCondition[]
+  profitDistributionRules        ProfitDistributionRule[]
+  systemUsers                    SystemUser[]
+  vat                            Vat[]
+  vbAssetArrangements            VbAssetArrangement[]
+  vbCommitteeTeams               VbCommitteeTeam[]
+  vbNsoSavingArrangements        VbNsoSavingArrangement[]
+  vbNsoSavingConditions          VbNsoSavingConditions[]
+  villageBanks                   VillageBank[]
+
+  @@map("status")
+}
+
+model Province {
+  id         String      @id(map: "province_pk") @db.Char(2)
+  nameEng    String      @map("name_eng") @db.VarChar
+  nameLao    String      @map("name_lao") @db.VarChar
+  needSync   String?     @map("need_sync") @db.Char(1)
+  districts  District[]
+  nsos       Nso[]
+  nsoOffices NsoOffice[]
+  vbCodes    VbCode[]
+  vbCode2s   VbCode2[]
+
+  @@map("province")
+}
+
+model District {
+  id         String      @id(map: "district_pk") @db.Char(4)
+  nameEng    String      @map("name_eng") @db.VarChar
+  nameLao    String      @map("name_lao") @db.VarChar
+  provinceId String?     @map("province_id") @db.Char(2)
+  districtNo String?     @map("district_no") @db.Char(2)
+  needSync   String?     @map("need_sync") @db.Char(1)
+  province   Province?   @relation(fields: [provinceId], references: [id], onUpdate: Restrict, map: "FK_312")
+  nsos       Nso[]
+  nsoOffices NsoOffice[]
+  vbCodes    VbCode[]
+  vbCode2s   VbCode2[]
+
+  @@index([provinceId], map: "fkIdx_312")
+  @@map("district")
+}
+
+model Country {
+  country_id   String        @id(map: "PK_countries") @db.Char(3)
+  nameEng      String?       @map("name_eng") @db.VarChar
+  nameLao      String?       @map("name_lao") @db.VarChar
+  alpha2Code   String?       @map("alpha2code") @db.Char(2)
+  alpha3Code   String?       @map("alpha3code") @db.Char(3)
+  needSync     String?       @map("need_sync") @db.Char(1)
+  nsos         Nso[]
+  nsoEmployees NsoEmployee[]
+  vats         Vat[]
+
+  @@map("countries")
+}
+
+model EthnicGroup {
+  id       String    @id(map: "PK_Ethnicgroup") @db.Char(2)
+  nameEng  String    @map("name_eng") @db.VarChar
+  nameLao  String    @map("name_lao") @db.VarChar
+  needSync String?   @map("need_sync") @db.Char(1)
+  villages Village[]
+
+  @@map("ethnicgroup")
+}
+
+model EconomicStatus {
+  id       String   @id(map: "PK_economic_status") @db.Char(1)
+  nameEng  String   @map("name_eng") @db.VarChar
+  nameLao  String   @map("name_lao") @db.VarChar
+  needSync String?  @map("need_sync") @db.Char(1)
+  clients  Client[]
+
+  @@map("economic_status")
+}
+
+model Profession {
+  id         String   @id(map: "PK_profession") @db.Char(2)
+  nameLao    String   @map("name_lao") @db.VarChar
+  nameEng    String   @map("name_eng") @db.VarChar
+  isDropDown String   @map("is_drop_down") @db.Char(1)
+  needSync   String?  @map("need_sync") @db.Char(1)
+  clients    Client[]
+
+  @@map("profession")
+}
+
+model JobTitle {
+  id            String        @id(map: "PK_jobtitle") @db.Char(2)
+  nameEng       String        @map("name_eng") @db.VarChar
+  nameLao       String        @map("name_lao") @db.VarChar
+  needSync      String?       @map("need_sync") @db.Char(1)
+  nsoEmployees1 NsoEmployee[] @relation("JobTitle1")
+  nsoEmployees2 NsoEmployee[] @relation("JobTitle2")
+
+  @@map("jobtitle")
+}
+
+model CnyLakRate {
+  date         DateTime  @db.Date
+  yuanToLak    Decimal?  @map("yuan_to_lak") @db.Decimal(255, 0)
+  vbCode       String    @map("vbcode") @db.Char(7)
+  synchronized String?   @db.Char(1)
+  needSync     String?   @map("need_sync") @db.Char(1)
+  vb           VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict)
+
+  @@id([date, vbCode])
+  @@map("cny_lak_rate")
+}
+
+model Vat {
+  id        BigInt    @id(map: "VAT_pkey") @default(autoincrement())
+  vatRate   Decimal?  @map("vat_rate") @db.Decimal(10, 5)
+  startDate DateTime? @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+  countryId String?   @map("coutntry_id") @db.Char(3)
+  statusId  String?   @map("status") @db.Char(1)
+  needSync  String?   @map("need_sync") @db.Char(1)
+  country   Country?  @relation(fields: [countryId], references: [country_id], onDelete: Restrict, onUpdate: Restrict, map: "vat_coutntry_id")
+  status    Status?   @relation(fields: [statusId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "vat_status")
+
+  @@map("vat")
+}
+
+model VbCode {
+  id                                     String                          @id(map: "vbcode_pk") @db.Char(7)
+  provinceId                             String                          @map("province_id") @db.Char(2)
+  districtId                             String                          @map("district_id") @db.Char(4)
+  villageId                              String                          @map("village_id") @db.Char(3)
+  nameEng                                String                          @map("name_eng") @db.VarChar
+  nameLao                                String                          @map("name_lao") @db.VarChar
+  needSync                               String?                         @map("need_sync") @db.Char(1)
+  vbIdOld                                String?                         @map("vb_id_old") @db.Char(7)
+  accountOwners                          AccountOwner[]
+  accounts                               Accounts[]
+  balance                                Balance[]
+  clients                                Client[]
+  clientAccounts                         ClientAccount[]
+  clientEquitySavingArrangements         ClientEquitySavingArrangement[]
+  clientInstallmentLoanPlans             ClientInstallmentLoanPlan[]
+  clientLoanArrangements                 ClientLoanArrangement[]
+  clientLoanLossProvisioning             ClientLoanLossProvisioning[]
+  clientLoanRules                        ClientLoanRule[]
+  clientSavingArrangements               ClientSavingArrangement[]
+  cnyLakRates                            CnyLakRate[]
+  events                                 Events[]
+  ews                                    Ews[]
+  generalLedger                          GeneralLedger[]
+  id_document_id_document_vbcodeTovbcode IdDocument[]                    @relation("id_document_vbcodeTovbcode")
+  notifications                          Notification[]
+  nsoFeeTransactions                     NsoFeeTransaction[]
+  nsoShares                              NsoShares[]
+  profitAndLoss                          ProfitAndLoss[]
+  profitDistrVbFunds                     ProfitDistrVbFund[]
+  profitDistrVbMembers                   ProfitDistrVbMember[]
+  profitDistrVbReserves                  ProfitDistrVbReserve[]
+  profitDistrVbcs                        ProfitDistrVbc[]
+  profitDistributionArrangements         ProfitDistributionArrangement[]
+  profitDistributionRules                ProfitDistributionRule[]
+  transactions                           Transactions[]
+  trialBalance                           TrialBalance[]
+  vbAssetArrangements                    VbAssetArrangement[]
+  vbFieldStaffMatchings                  VbFieldstaffMatching[]
+  vbNsoSavingArrangements                VbNsoSavingArrangement[]
+  vbServiceDays                          VbServiceDays[]
+  vbTargets                              VbTargets[]
+  district                               District                        @relation(fields: [districtId], references: [id], onUpdate: Restrict, map: "FK_1391")
+  province                               Province                        @relation(fields: [provinceId], references: [id], onUpdate: Restrict, map: "FK_322")
+  village_village_vbcodeTovbcode         Village?                        @relation("village_vbcodeTovbcode")
+  villageBank                            VillageBank?
+
+  @@index([districtId], map: "fkIdx_1391")
+  @@index([provinceId], map: "fkIdx_322")
+  @@map("vbcode")
+}
+
+model VbCode2 {
+  id         String   @id(map: "vbcode_copy1_pkey") @db.Char(7)
+  provinceId String   @map("province_id") @db.Char(2)
+  districtId String   @map("district_id") @db.Char(4)
+  villageId  String   @map("village_id") @db.Char(3)
+  nameEng    String   @map("name_eng") @db.VarChar
+  nameLao    String   @map("name_lao") @db.VarChar
+  needSync   String?  @map("need_sync") @db.Char(1)
+  vbIdOld    String?  @map("vb_id_old") @db.Char(7)
+  district   District @relation(fields: [districtId], references: [id], onUpdate: Restrict, map: "vbcode_copy1_district_id_fkey")
+  province   Province @relation(fields: [provinceId], references: [id], onUpdate: Restrict, map: "vbcode_copy1_province_id_fkey")
+
+  @@index([districtId], map: "fkIdx_1391_copy1")
+  @@index([provinceId], map: "fkIdx_322_copy1")
+  @@map("vbcode2")
+}
+
+model VillageBank {
+  vbCode                     String                   @id @map("vbcode") @db.Char(7)
+  foundingDate               DateTime                 @map("foundingdate") @db.Date
+  nameEng                    String                   @map("name_eng") @db.VarChar
+  nameLao                    String                   @map("name_lao") @db.VarChar
+  startMonthBusinessYear     Int                      @map("startmonthbusinessyear")
+  monthlyMeetingDate         Int                      @map("monthlymeetingdate")
+  monthlyMeetingDateDuration Int                      @map("monthlymeetingdate_duration")
+  minimumSaving              Int                      @map("minimum_saving")
+  maximumSaving              BigInt?                  @map("maximum_saving")
+  currency                   String                   @db.Char(3)
+  nsoOfficeId                String                   @map("nso_office_id") @db.Char(6)
+  statusId                   String                   @map("status_id") @db.Char(1)
+  equitySavingOnly           String                   @map("equity_saving_only") @db.Char(1)
+  synchronized               DateTime?                @db.Timestamp(6)
+  needSync                   String?                  @map("need_sync") @db.Char(1)
+  vbIdOld                    String?                  @map("vb_id_old") @db.Char(7)
+  exceptFee                  String?                  @map("except_fee") @db.Char(1)
+  clientSavingConditions     ClientSavingCondition[]
+  nsoVbWsloanArrangements    NsoVbWsloanArrangement[]
+  vbCommitteeTeams           VbCommitteeTeam[]
+  vb                         VbCode                   @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1102")
+  status                     Status                   @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1585")
+  nsoOffice                  NsoOffice                @relation(fields: [nsoOfficeId], references: [id], onUpdate: Restrict, map: "FK_509")
+
+  @@index([vbCode], map: "fkIdx_1102")
+  @@index([statusId], map: "fkIdx_1585")
+  @@index([nsoOfficeId], map: "fkIdx_509")
+  @@map("villagebank")
+}
+
+model Village {
+  vbCode                        String      @id @map("vbcode") @db.Char(7)
+  nameEng                       String      @map("name_eng") @db.VarChar
+  nameLao                       String      @map("name_lao") @db.VarChar
+  ethnicGroupId                 String      @map("ethnicgroup_id") @db.Char(2)
+  families                      Int?
+  households                    Int?
+  population                    Int?
+  femalePopulation              Int?        @map("femalepopulation")
+  synchronized                  DateTime?   @db.Timestamp(6)
+  needSync                      String?     @map("need_sync") @db.Char(1)
+  vbcode_village_vbcodeTovbcode VbCode      @relation("village_vbcodeTovbcode", fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1225")
+  ethnicGroup                   EthnicGroup @relation(fields: [ethnicGroupId], references: [id], onUpdate: Restrict, map: "FK_1336")
+
+  @@index([vbCode], map: "fkIdx_1225")
+  @@index([ethnicGroupId], map: "fkIdx_1336")
+  @@map("village")
+}
+
+model VbTargets {
+  businessYear       String    @map("businessyear") @db.VarChar
+  membersLastYear    BigInt    @map("members_lastyear")
+  membersTarget      BigInt    @map("members_target")
+  savingsLastYear    BigInt    @map("savings_lastyear")
+  savingsTarget      BigInt    @map("savings_target")
+  loansLastYear      BigInt    @map("loans_lastyear")
+  loansTarget        BigInt    @map("loans_target")
+  parLastYear        Decimal   @map("par_lastyear") @db.Decimal
+  parTarget          Decimal   @map("par_target") @db.Decimal
+  profitLastYear     BigInt    @map("profit_lastyear")
+  profitTarget       BigInt    @map("profit_target")
+  savingRateLastYear Decimal   @map("savingrate_lastyear") @db.Decimal
+  savingRateTarget   Decimal?  @map("savingrate_target") @db.Decimal
+  vbCode             String    @map("vbcode") @db.Char(7)
+  synchronized       DateTime? @db.Timestamp(6)
+  needSync           String?   @map("need_sync") @db.Char(1)
+  startDate          DateTime? @map("start_date") @db.Date
+  endDate            DateTime? @map("end_date") @db.Date
+  vb                 VbCode    @relation(fields: [vbCode], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_2170")
+
+  @@id([businessYear, vbCode], map: "PK_vb_targets")
+  @@index([vbCode], map: "fkIdx_2170")
+  @@map("vb_targets")
+}
+
+model VbServiceDays {
+  id                Int       @default(autoincrement())
+  serviceDayPlanned DateTime  @map("serviceday_planned") @db.Date
+  startDateTime     DateTime  @map("start_date_time") @db.Timestamp(6)
+  endDateTime       DateTime? @map("end_date_time") @db.Timestamp(6)
+  comment           String?   @db.VarChar
+  vbCode            String    @map("vbcode") @db.Char(7)
+  nsoEmployeeId     String    @map("nso_employee_id") @db.Char(6)
+  synchronized      DateTime? @db.Timestamp(6)
+  needSync          String?   @map("need_sync") @db.Char(1)
+  cashSw            BigInt?   @map("cash_sw")
+  cashBox           BigInt?   @map("cash_box")
+  cashBook          BigInt?   @map("cash_book")
+  serviceDayEnd     String?   @map("service_day_end") @db.VarChar(10)
+  closeMeeting      String?   @map("close_meeting") @db.VarChar(10)
+  vb                VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_889")
+
+  @@id([id, vbCode], map: "vb_servicedays_pk")
+  @@index([vbCode], map: "fkIdx_889")
+  @@map("vb_servicedays")
+}
+
+model Client {
+  id                     String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  bankbookNumber         String?                 @map("bankbooknumber") @db.Char(5)
+  firstName              String?                 @map("firstname") @db.VarChar
+  lastName               String?                 @map("lastname") @db.VarChar
+  nickName               String                  @map("nickname") @db.VarChar
+  genderEng              String?                 @map("gender_eng") @db.VarChar(50)
+  genderLao              String?                 @map("gender_lao") @db.VarChar
+  birthDate              DateTime?               @map("birthdate") @db.Date
+  clientType             String                  @map("client_type") @db.VarChar
+  statusId               String                  @map("status_id") @db.Char(1)
+  email                  String?                 @db.VarChar
+  phoneNumber            String?                 @map("phonenumber") @db.Char(12)
+  economicStatusId       String?                 @map("economic_status_id") @db.Char(1)
+  professionId           String?                 @map("profession_id") @db.Char(2)
+  beneficiaryLao         String?                 @map("beneficiary_lao") @db.VarChar
+  vbCode                 String                  @map("vbcode") @db.Char(7)
+  sortNo                 String?                 @map("sort_no") @db.Char(4)
+  isGuarantor            String?                 @map("is_guarantor") @db.Char(1)
+  guarantorVolume        Int?                    @map("guarantor_volume")
+  synchronized           DateTime?               @db.Timestamp(6)
+  needSync               String?                 @map("need_sync") @db.Char(1)
+  civilStatusId          String?                 @map("civil_status_id") @db.Char(2)
+  ethnicId               String?                 @map("ethnic_id") @db.Char(2)
+  requestName            String?                 @map("request_name") @db.VarChar
+  requestAccNumber       String?                 @map("request_acc_number") @db.VarChar
+  accountOwners          AccountOwner[]
+  profession             Profession?             @relation(fields: [professionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_1454")
+  economicStatus         EconomicStatus?         @relation(fields: [economicStatusId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_1550")
+  status                 Status                  @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1561")
+  vb                     VbCode                  @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_870")
+  clientLoanArrangements ClientLoanArrangement[]
+  idDocuments            IdDocument[]
+  profitDistrVbcs        ProfitDistrVbc[]
+  vbCommitteeTeams       VbCommitteeTeam[]
+
+  @@index([professionId], map: "fkIdx_1454")
+  @@index([economicStatusId], map: "fkIdx_1550")
+  @@index([statusId], map: "fkIdx_1561")
+  @@index([vbCode], map: "fkIdx_870")
+  @@map("client")
+}
+
+model ClientAccount {
+  bankbookNumber String         @map("bankbooknumber") @db.VarChar(5)
+  vbCode         String         @map("vbcode") @db.VarChar(7)
+  username       String         @unique @db.VarChar(50)
+  phoneNumber    String?        @map("phone_number") @db.VarChar(12)
+  password       String
+  vb             VbCode         @relation(fields: [vbCode], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  refreshTokens  RefreshToken[]
+  clientNotifications ClientMeetingNotification[]
+  deviceFcm      DeviceFcm[]
+
+  @@id([bankbookNumber, vbCode])
+  @@map("client_account")
+}
+
+model DeviceFcm {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deviceId          String   @map("device_id") @db.VarChar(255)
+  fcmToken          String?  @map("fcm_token") @db.Text
+  fcmTokenUpdatedAt DateTime? @map("fcm_token_updated_at") @db.Timestamp(6)
+  username          String   @db.VarChar(50)
+  isActive          Boolean  @default(true) @map("is_active")
+  clientAccount     ClientAccount @relation(fields: [username], references: [username], onDelete: Cascade)
+
+  @@unique([username, deviceId])
+  @@map("devices_fcm")
+}
+
+model RefreshToken {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bankbookNumber String        @map("bankbooknumber") @db.VarChar(5)
+  vbCode         String        @map("vbcode") @db.VarChar(7)
+  token          String        @unique
+  expiresAt      DateTime      @map("expires_at") @db.Timestamp(6)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  revokedAt      DateTime?     @map("revoked_at") @db.Timestamp(6)
+  isRevoked      Boolean       @default(false) @map("is_revoked")
+  ipAddress      String?       @map("ip_address") @db.VarChar(45)
+  userAgent      String?       @map("user_agent")
+  clientAccount  ClientAccount @relation(fields: [bankbookNumber, vbCode], references: [bankbookNumber, vbCode], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([bankbookNumber])
+  @@index([token])
+  @@map("refresh_token")
+}
+
+model IdDocument {
+  id                                BigInt    @default(autoincrement())
+  documentNameLao                   String?   @map("document_name_lao") @db.VarChar
+  documentNameEng                   String?   @map("document_name_eng") @db.VarChar
+  iddocumentdate                    DateTime? @map("iddocumentdate") @db.Date
+  idDocumentNumber                  String?   @map("iddocmentnumber") @db.VarChar
+  fambookIndivNumber                String?   @map("fambook_indiv_number") @db.VarChar
+  placeOfIssueEng                   String?   @map("place_of_issue_eng") @db.VarChar
+  placeOfIssueLao                   String?   @map("place_of_isue_lao") @db.VarChar
+  clientId                          String    @map("client_id") @db.Uuid
+  sortNo                            Int?      @map("sort_no")
+  vbCode                            String?   @map("vbcode") @db.Char(7)
+  synchronized                      DateTime? @db.Timestamp(6)
+  change                            String?   @db.Char(2)
+  needSync                          String?   @map("need_sync") @db.Char(1)
+  householdWorks                    String?   @map("household_works") @db.VarChar
+  client                            Client     @relation(fields: [clientId], references: [id], onUpdate: Restrict, map: "FK_1157")
+  vbcode_id_document_vbcodeTovbcode VbCode?    @relation("id_document_vbcodeTovbcode", fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_2069")
+
+  @@id([id], map: "id_document_pk")
+  @@index([clientId], map: "fkIdx_1157")
+  @@index([vbCode], map: "fkIdx_2069")
+  @@map("id_document")
+}
+
+model AccountOwner {
+  bankbookNumber String    @map("bankbooknumber") @db.Char(5)
+  accNumber      String    @map("acc_number") @db.Char(15)
+  clientId       String    @map("client_id") @db.Uuid
+  synchronized   DateTime? @db.Timestamp(6)
+  needSync       String?   @map("need_sync") @db.Char(1)
+  vbCode         String    @map("vbcode") @db.Char(7)
+  account        Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1074")
+  client         Client    @relation(fields: [clientId], references: [id], onUpdate: Restrict, map: "FK_1080")
+  vb             VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_2221")
+
+  @@id([bankbookNumber, accNumber, clientId])
+  @@index([accNumber], map: "fkIdx_1074")
+  @@index([clientId], map: "fkIdx_1080")
+  @@index([vbCode], map: "fkIdx_2221")
+  @@map("account_owner")
+}
+
+model Accounts {
+  accNumber                                             String                          @id @map("acc_number") @db.Char(15)
+  accCode                                               String?                         @map("acc_code") @db.Char(15)
+  accCodeId                                             String?                         @map("acc_code_id") @db.Char(7)
+  accLevel                                              String                          @map("acc_level") @db.Char(1)
+  accGroup                                              String                          @map("acc_group") @db.Char(1)
+  accNameEng                                            String?                         @map("acc_name_eng") @db.VarChar
+  accNameLao                                            String?                         @map("acc_name_lao") @db.VarChar
+  bankbookNumber                                        String?                         @map("bankbooknumber") @db.Char(5)
+  accTypeId                                             String?                         @map("acc_type_id") @db.Char(1)
+  runningAccNo                                          String?                         @map("running_acc_no") @db.Char(1)
+  balancePreviousDate                                   BigInt?                         @map("balance_previous_date")
+  totalAmountIncrease                                   BigInt?                         @map("total_amount_increase")
+  totalAmountDecrease                                   BigInt?                         @map("total_amount_decrease")
+  currentBalance                                        BigInt                          @map("current_balance")
+  lastUpdate                                            DateTime                        @map("last_update") @db.Date
+  statusId                                              String                          @map("status_id") @db.Char(1)
+  vbCode                                                String                          @map("vbcode") @db.Char(7)
+  openingDate                                           DateTime                        @map("opening_date") @db.Date
+  closingDate                                           DateTime?                       @map("closing_date") @db.Date
+  canBeNegative                                         String?                         @map("can_be_negative") @db.Char(1)
+  accBalanceSide                                        String?                         @map("acc_balanceside") @db.Char(1)
+  isBalanceAcc                                          String?                         @map("is_balance_acc") @db.Char(1)
+  parentAccCode                                         String?                         @map("parent_acc_code") @db.Char(15)
+  parentAcc                                             String?                         @map("parent_acc") @db.Char(15)
+  receivesDividend                                      String?                         @map("receives_dividend") @db.Char(1)
+  isLedger                                              String?                         @map("is_ledger") @db.Char(1)
+  synchronized                                          DateTime?                       @db.Timestamp(6)
+  isProfitAndLossAcc                                    String?                         @map("is_profit_and_loss_acc") @db.Char(1)
+  isTrialBalanceAcc                                     String?                         @map("is_trial_balance_acc") @db.Char(1)
+  pnlCategory                                           String?                         @map("pnl_category") @db.Char(6)
+  ledgerPosition                                        String?                         @map("ledgerposition") @db.Char(6)
+  balancePosition                                       String?                         @map("balanceposition") @db.Char(6)
+  needSync                                              String?                         @map("need_sync") @db.Char(1)
+  restructuringLoan                                     Boolean?                        @map("restructuring_loan")
+  accountOwners                                         AccountOwner[]
+  accountType                                           AccountType?                    @relation(fields: [accTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_1068")
+  vb                                                    VbCode                          @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1522")
+  status                                                Status                          @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1577")
+  balance                                               Balance[]
+  client_equity_saving_arrangement                      ClientEquitySavingArrangement[]
+  client_installment_loan_plan                          ClientInstallmentLoanPlan[]
+  client_loan_arrangement                               ClientLoanArrangement[]
+  client_saving_arrangement                             ClientSavingArrangement[]
+  general_ledger                                        GeneralLedger[]
+  nso_shares                                            NsoShares[]
+  nso_vb_wsloan_arrangement                             NsoVbWsloanArrangement[]
+  profit_and_loss                                       ProfitAndLoss[]
+  profit_distr_vb_fund                                  ProfitDistrVbFund[]
+  profit_distr_vb_member                                ProfitDistrVbMember[]
+  profit_distr_vb_reserve                               ProfitDistrVbReserve[]
+  profit_distr_vbc                                      ProfitDistrVbc[]
+  transactions                                          Transactions[]
+  transactions_transactions_credit_acc_numberToaccounts Transactions[]                  @relation("transactions_credit_acc_numberToaccounts")
+  trial_balance                                         TrialBalance[]
+  vb_asset_arrangement                                  VbAssetArrangement[]
+  vb_committeeteam                                      VbCommitteeTeam[]
+  vb_nso_saving_arrangement                             VbNsoSavingArrangement[]
+
+  @@index([accTypeId], map: "fkIdx_1068")
+  @@index([vbCode], map: "fkIdx_1522")
+  @@index([statusId], map: "fkIdx_1577")
+  @@map("accounts")
+}
+
+model AccountType {
+  id          String     @id(map: "account_type_pk") @db.Char(1)
+  nameEng     String     @map("name_eng") @db.VarChar
+  nameLao     String     @map("name_lao") @db.VarChar
+  description String?    @db.VarChar
+  needSync    String?    @map("need_sync") @db.Char(1)
+  accounts    Accounts[]
+
+  @@map("account_type")
+}
+
+model ChartOfAccounts {
+  acc_number          String?   @db.Char(15)
+  acc_code            String    @id(map: "PK_Char_of_account") @db.Char(50)
+  accCodeId           String    @map("acc_code_id") @db.Char(7)
+  acc_level           String?   @db.VarChar
+  accGroup            String    @map("acc_group") @db.Char(2)
+  accNameEng          String    @map("acc_name_eng") @db.VarChar
+  accNameLao          String    @map("acc_name_lao") @db.VarChar
+  bankbookNo          String?   @map("bankbook_no") @db.Char(5)
+  accTypeId           String?   @map("acc_type_id") @db.Char(2)
+  runningAccNo        String?   @map("running_acc_no") @db.Char(2)
+  balancePreviousDate BigInt?   @map("balance_previous_date")
+  totalAmountIncrease BigInt?   @map("total_amount_increase")
+  totalAmountDecrease BigInt?   @map("total_amount_decrease")
+  currentBalance      BigInt?   @map("current_balance")
+  lastUpdate          DateTime? @map("last_update") @db.Date
+  statusId            String    @map("status_id") @db.Char(1)
+  vbCode              String?   @map("vb_code") @db.Char(7)
+  openingDate         DateTime? @map("opening_dete") @db.Date
+  closingDate         DateTime? @map("closing_date") @db.Date
+  canBeNegative       String?   @map("can_be_negative") @db.Char(1)
+  accBalanceSide      String    @map("acc_balanceside") @db.Char(1)
+  isBalanceAcc        String?   @map("is_balance_acc") @db.Char(1)
+  parentAccCode       String?   @map("parent_acc_code") @db.Char(7)
+  perentAcc           String?   @map("perent_acc") @db.Char(15)
+  receivesDividend    String?   @map("receives_dividend") @db.Char(1)
+  isLedger            String?   @map("is_ledger") @db.Char(1)
+  synchronized        DateTime? @db.Timestamp(6)
+  isProfitAndLossAcc  String?   @map("is_profit_and_loss_acc") @db.Char(1)
+  isTrialBalanceAcc   String?   @map("is_trial_balance_acc") @db.Char(1)
+  pnlCategory         String?   @map("pnl_category") @db.Char(6)
+  ledgerPosition      String?   @map("ledgerposition") @db.Char(6)
+  balancePosition     String?   @map("balanceposition") @db.Char(6)
+  needSync            String?   @map("need_sync") @db.Char(1)
+  status              Status    @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1569")
+
+  @@index([statusId], map: "fkIdx_1569")
+  @@map("chart_of_accounts")
+}
+
+// PaymentMethod stored as VARCHAR(20) with a DB-level CHECK (Cash | BankTransfer).
+// We use String in Prisma (not a native PG enum) to avoid Prisma enum-type conflicts.
+
+model Transactions {
+  id                                                String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  date                                              DateTime        @db.Timestamp(6)
+  bankbookNumber                                    String?         @map("bankbooknumber") @db.Char(5)
+  transactionCodeId                                 String          @map("transaction_code_id") @db.Char(4)
+  amount                                            BigInt
+  debitAccNumber                                    String          @map("debit_acc_number") @db.Char(15)
+  creditAccNumber                                   String          @map("credit_acc_number") @db.Char(15)
+  userId                                            String?         @map("user_id") @db.VarChar
+  vbCode                                            String          @map("vbcode") @db.Char(7)
+  synchronized                                      DateTime?       @db.Timestamp(6)
+  description                                       String?         @db.VarChar
+  needSync                                          String?         @map("need_sync") @db.Char(1)
+  paymentMethod                                     String?         @map("payment_method") @default("Cash") @db.VarChar(20)
+  debitAccount                                      Accounts        @relation(fields: [debitAccNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1431")
+  accounts_transactions_credit_acc_numberToaccounts Accounts        @relation("transactions_credit_acc_numberToaccounts", fields: [creditAccNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1434")
+  transactionCode                                   TransactionCode @relation(fields: [transactionCodeId], references: [transactionCode], onUpdate: Restrict, map: "FK_1442")
+  vb                                                VbCode          @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1519")
+
+  @@index([debitAccNumber], map: "fkIdx_1431")
+  @@index([creditAccNumber], map: "fkIdx_1434")
+  @@index([transactionCodeId], map: "fkIdx_1442")
+  @@index([vbCode], map: "fkIdx_1519")
+  @@map("transactions")
+}
+
+model TransactionCode {
+  transactionCode  String         @id(map: "PK_Transaction_code") @map("transaction_code") @db.Char(4)
+  nameEng          String         @map("name_eng") @db.VarChar
+  nameLao          String         @map("name_lao") @db.VarChar
+  debitAccNumber   String?        @map("debit_acc_number") @db.Char(15)
+  debitAccNameEng  String         @map("debit_acc_name_eng") @db.VarChar
+  debitAccNameLao  String?        @map("debit_acc_name_lao") @db.VarChar(150)
+  creditAccNumber  String?        @map("credit_acc_number") @db.Char(15)
+  creditAccNameEng String         @map("credit_acc_name_eng") @db.VarChar(150)
+  creditAccNameLao String?        @map("credit_acc_name_lao") @db.VarChar(150)
+  accGroup         String         @map("acc_group") @db.Char(1)
+  description      String?        @db.VarChar
+  needSync         String?        @map("need_sync") @db.Char(1)
+  debitChange      String?        @map("debit_change") @db.Char(1)
+  creditChange     String?        @map("credit_change") @db.Char(1)
+  balanceChanges   String?        @map("balance_changes") @db.VarChar
+  transactions     Transactions[]
+
+  @@index([debitAccNumber], map: "fkIdx_1917")
+  @@index([creditAccNumber], map: "fkIdx_1920")
+  @@map("transaction_code")
+}
+
+model Balance {
+  date            DateTime  @db.Timestamp(0)
+  accNumber       String    @map("acc_number") @db.Char(15)
+  accNameEng      String    @map("acc_name_eng") @db.VarChar
+  accNameLao      String    @map("acc_name_lao") @db.VarChar
+  amount          BigInt
+  vbCode          String    @map("vbcode") @db.Char(7)
+  type            String?   @db.VarChar
+  synchronized    DateTime? @db.Timestamp(6)
+  balancePosition String    @map("balanceposition") @db.Char(6)
+  needSync        String?   @map("need_sync") @db.Char(1)
+  accounts        Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1975")
+  vb              VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1978")
+
+  @@id([date, accNumber], map: "PK_start_blance_vb")
+  @@index([accNumber], map: "fkIdx_1975")
+  @@index([vbCode], map: "fkIdx_1978")
+  @@map("balance")
+}
+
+model GeneralLedger {
+  date                DateTime  @db.Timestamp(0)
+  accNumber           String    @map("acc_number") @db.Char(15)
+  accNameEng          String    @map("acc_name_eng") @db.VarChar
+  accNameLao          String    @map("acc_name_lao") @db.VarChar
+  balancePreviousDate BigInt?   @map("balance_previous_date")
+  totalAmountIncrease BigInt    @map("total_amount_increase")
+  totalAmountDecrease BigInt    @map("total_amount_decrease")
+  balance             BigInt
+  vbCode              String    @map("vbcode") @db.Char(7)
+  type                String?   @db.VarChar
+  synchronized        DateTime? @db.Timestamp(6)
+  ledgerPosition      String?   @map("ledgerposition") @db.Char(6)
+  needSync            String?   @map("need_sync") @db.Char(1)
+  accounts            Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1946")
+  vb                  VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1955")
+
+  @@id([date, accNumber], map: "PK_general_ledger")
+  @@index([accNumber], map: "fkIdx_1946")
+  @@index([vbCode], map: "fkIdx_1955")
+  @@map("general_ledger")
+}
+
+model TrialBalance {
+  date            DateTime  @db.Timestamp(0)
+  accNumber       String    @map("acc_number") @db.Char(15)
+  accNameEng      String    @map("acc_name_eng") @db.VarChar
+  accNameLao      String    @map("acc_name_lao") @db.VarChar
+  amount          BigInt
+  vbCode          String    @map("vbcode") @db.Char(7)
+  type            String?   @db.VarChar
+  synchronized    DateTime? @db.Timestamp(6)
+  balancePosition String    @map("balanceposition") @db.Char(6)
+  needSync        String?   @map("need_sync") @db.Char(1)
+  accounts        Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1988")
+  vb              VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1991")
+
+  @@id([date, accNumber], map: "PK_trial_balance")
+  @@index([accNumber], map: "fkIdx_1988")
+  @@index([vbCode], map: "fkIdx_1991")
+  @@map("trial_balance")
+}
+
+model ProfitAndLoss {
+  date         DateTime  @db.Timestamptz(0)
+  accNumber    String    @map("acc_number") @db.Char(15)
+  accNameEng   String    @map("acc_name_eng") @db.VarChar
+  accNameLao   String    @map("acc_name_lao") @db.VarChar
+  amount       BigInt
+  vbCode       String    @map("vbcode") @db.Char(7)
+  type         String?   @db.VarChar
+  synchronized DateTime? @db.Timestamp(6)
+  pnlCategory  String?   @map("pnl_category") @db.Char(6)
+  needSync     String?   @map("need_sync") @db.Char(1)
+  accounts     Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1930")
+  vb           VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1940")
+
+  @@id([date, accNumber], map: "PK_profit_and_loss")
+  @@index([accNumber], map: "fkIdx_1930")
+  @@index([vbCode], map: "fkIdx_1940")
+  @@map("profit_and_loss")
+}
+
+model ClientLoanArrangement {
+  id                        BigInt                  @default(autoincrement())
+  date                      DateTime                @db.Date
+  accNumber                 String                  @map("acc_number") @db.Char(15)
+  isSyndicated              String                  @map("is_syndicated") @db.Char(1)
+  clientLoanRuleId          String                  @map("client_loan_rule_id") @db.VarChar(12)
+  clientLoanRepaymentTypeId String                  @map("client_loan_repayment_type_id") @db.Char(2)
+  startDate                 DateTime                @map("start_date") @db.Date
+  loanPeriodMonths          Int                     @map("loan_period_months")
+  endDate                   DateTime?               @map("end_date") @db.Date
+  totalLoanAmount           BigInt                  @map("total_loan_amount")
+  loanOutstanding           BigInt                  @map("loan_outstanding")
+  interestDue               BigInt                  @map("interest_due")
+  interestPaid              BigInt                  @map("interest_paid")
+  interestUnpaid            BigInt                  @map("interest_unpaid")
+  principalDue              BigInt                  @map("principal_due")
+  principalPaid             BigInt                  @map("principal_paid")
+  principalUnpaid           BigInt                  @map("principal_unpaid")
+  principalDaysOverdue      BigInt                  @map("principal_days_overdue")
+  interestDaysOverdue       BigInt?                 @map("interest_days_overdue")
+  loanWrittenOff            String                  @map("loan_writtenoff") @db.Char(1)
+  vbCode                    String                  @map("vbcode") @db.Char(7)
+  statusId                  String                  @map("status_id") @db.Char(1)
+  synchronized              DateTime?               @db.Timestamp(6)
+  guarantorClientId         String?                 @map("guarantor_client_id") @db.Uuid
+  needSync                  String?                 @map("need_sync") @db.Char(1)
+  clientLoanIntRate         Decimal?                @map("client_loan_int_rate") @db.Decimal(10, 5)
+  monthlyInterestDue        BigInt?                 @map("monthly_interest_due")
+  monthlyPrincipalDue       BigInt?                 @map("monthly_principal_due")
+  interestPaidThisMonth     BigInt?                 @map("interest_paid_this_month")
+  subloanId                 String?                 @map("subloan_id") @db.Char(2)
+  detail                    String?                 @db.VarChar
+  accounts                  Accounts                @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1161")
+  vb                        VbCode                  @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1467")
+  clientLoanRepaymentType   ClientLoanRepaymentType @relation(fields: [clientLoanRepaymentTypeId], references: [id], onUpdate: Restrict, map: "FK_1824")
+  status                    Status                  @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1964")
+  guarantorClient           Client?                 @relation(fields: [guarantorClientId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_2052")
+
+  @@id([id, vbCode], map: "client_loan_arrangement_pk")
+  @@index([clientLoanRuleId, vbCode], map: "fkIdx_1089")
+  @@index([accNumber], map: "fkIdx_1161")
+  @@index([vbCode], map: "fkIdx_1467")
+  @@index([clientLoanRepaymentTypeId], map: "fkIdx_1824")
+  @@index([statusId], map: "fkIdx_1964")
+  @@index([guarantorClientId], map: "fkIdx_2052")
+  @@map("client_loan_arrangement")
+}
+
+model ClientLoanRepaymentType {
+  id                    String                  @id(map: "PK_client_loan_repayment_type") @db.Char(2)
+  nameEng               String                  @map("name_eng") @db.VarChar
+  nameLao               String                  @map("name_lao") @db.VarChar
+  interestIntervalEng   String                  @map("interest_interval_eng") @db.VarChar
+  interestIntervalLao   String                  @map("interest_interval_lao") @db.VarChar
+  interestPeriodMonth   Int                     @map("interest_period_month")
+  repaymentPrincipalEng String                  @map("repayment_principal_eng") @db.VarChar
+  repaymentPrincipalLao String                  @map("repayment_principal_lao") @db.VarChar
+  principalPeriodMonth  Int                     @map("principal_period_month")
+  canBeSyndicated       String                  @map("can_be_syndicated") @db.Char(1)
+  needSync              String?                 @map("need_sync") @db.Char(1)
+  loanArrangements      ClientLoanArrangement[]
+
+  @@map("client_loan_repayment_type")
+}
+
+model ClientLoanPurpose {
+  id               String           @id(map: "PK_client_loan_type") @db.Char(2)
+  nameEng          String           @map("name_eng") @db.VarChar
+  nameLao          String           @map("name_lao") @db.VarChar
+  canBeSyndicated  String           @map("can_be_syndicated") @db.Char(1)
+  needSync         String?          @map("need_sync") @db.Char(1)
+  client_loan_rule ClientLoanRule[]
+
+  @@map("client_loan_purpose")
+}
+
+model ClientLoanRule {
+  id                         String            @db.VarChar(12)
+  clientLoanPurposeId        String            @map("client_loan_purpose_id") @db.Char(2)
+  vbInterestRateM            Decimal?          @map("vb_interest_rate_m") @db.Decimal
+  maxInterestM               Decimal           @map("max_interest_m") @db.Decimal
+  vbMaxLendingPeriodM        Int               @map("vb_max_lending_period_m")
+  vbMaxLoanAmount            BigInt            @map("vb_max_loan_amount")
+  max_loan_amount            BigInt
+  collateralRequired         String            @map("collateral_required") @db.Char(1)
+  vbCode                     String            @map("vbcode") @db.Char(7)
+  startDate                  DateTime          @map("start_date") @db.Date
+  endDate                    DateTime?         @map("end_date") @db.Date
+  statusId                   String            @map("status_id") @db.Char(1)
+  synchronized               DateTime?         @db.Timestamp(6)
+  needSync                   String?           @map("need_sync") @db.Char(1)
+  vbMaxInstallmentLoanPeriod Int?              @map("vb_max_installment_loan_period")
+  userId                     String?           @map("user_id") @db.VarChar
+  vb                         VbCode            @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1240")
+  client_loan_purpose        ClientLoanPurpose @relation(fields: [clientLoanPurposeId], references: [id], onUpdate: Restrict, map: "FK_1812")
+  status                     Status            @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1816")
+
+  @@id([id, vbCode], map: "client_loan_rule_pk")
+  @@index([vbCode], map: "fkIdx_1240")
+  @@index([clientLoanPurposeId], map: "fkIdx_1812")
+  @@index([statusId], map: "fkIdx_1816")
+  @@map("client_loan_rule")
+}
+
+model ClientInstallmentLoanPlan {
+  id                      BigInt
+  vbCode                  String    @map("vbcode") @db.VarChar(7)
+  monthPlan               DateTime? @map("month_plan") @db.Date
+  monthlyInterest         BigInt?   @default(0) @map("monthly_interest")
+  monthlyInterestPaid     BigInt?   @default(0) @map("monthly_interest_paid")
+  monthlyInterestNotPaid  BigInt?   @default(0) @map("monthly_interest_not_paid")
+  monthlyPrinciple        BigInt?   @default(0) @map("monthly_principle")
+  monthlyPrinciplePaid    BigInt?   @default(0) @map("monthly_principle_paid")
+  monthlyPrincipleNotPaid BigInt?   @default(0) @map("monthly_principle_not_paid")
+  accNumber               String    @map("acc_number") @db.VarChar(15)
+  runningMonth            Int?      @map("running_month") @db.SmallInt
+  needSync                String?   @map("need_sync") @db.Char(2)
+  synchronized            DateTime? @db.Timestamp(6)
+  accounts                Accounts  @relation(fields: [accNumber], references: [accNumber], onDelete: NoAction, onUpdate: NoAction)
+  vb                      VbCode    @relation(fields: [vbCode], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([id, vbCode])
+  @@map("client_installment_loan_plan")
+}
+
+model ClientLoanLossProvisioning {
+  id                                 BigInt                          @default(autoincrement())
+  clientLoanLossProvisioningModelId  String                          @map("client_loan_loss_provisioning_model_id") @db.Char(1)
+  date                               DateTime                        @db.Date
+  creditPortfolioTotal               BigInt                          @map("creditportfolio_total")
+  creditPortfolio1T30                BigInt                          @map("creditportfolio_1t30")
+  creditPortfolio91T180              BigInt                          @map("creditportfolio_91t180")
+  creditPortfolio181                 BigInt                          @map("creditportfolio_181")
+  creditPortfolioNonPerfTotal        BigInt                          @map("creditportfolio_non_perf_total")
+  creditPortfolioPerf                BigInt                          @map("creditportfolio_perf")
+  neededLoanLossP1Percent            BigInt                          @map("needed_loan_loss_p_1_percent")
+  neededLoanLossP25Percent           BigInt                          @map("needed_loan_loss_p_25_percent")
+  neededLoanLossP50Percent           BigInt                          @map("needed_loan_loss_p_50_percent")
+  neededLoanLossP100Percent          BigInt                          @map("needed_loan_loss_p_100_percent")
+  neededLoanLossPTotal               BigInt                          @map("needed_loan_loss_p_total")
+  loanLossP1Booked                   BigInt                          @map("loan_loss_p_1_booked")
+  loanLossP25Booked                  BigInt                          @map("loan_loss_p_25_booked")
+  loanLossP50Booked                  BigInt                          @map("loan_loss_p_50_booked")
+  loanLossP100Booked                 BigInt                          @map("loan_loss_p_100_booked")
+  loanLossPIncrease                  BigInt?                         @map("loan_loss_p_increase")
+  loanLossPDecrease                  BigInt?                         @map("loan_loss_p_decrease")
+  loanLossPBookedTotal               BigInt                          @map("loan_loss_p_booked_total")
+  vbCode                             String                          @map("vbcode") @db.Char(7)
+  synchronized                       DateTime?                       @db.Timestamp(6)
+  needSync                           String?                         @map("need_sync") @db.Char(1)
+  creditPortfolio31T90               BigInt?                         @map("creditportfolio_31t90")
+  onePercentOfPerformingPortfolio    BigInt?                         @map("one_percent_of_performing_portfolio")
+  client_loan_lossprovisioning_model ClientLoanLossProvisioningModel @relation(fields: [clientLoanLossProvisioningModelId], references: [id], onUpdate: Restrict, map: "FK_1838")
+  vb                                 VbCode                          @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_901")
+
+  @@id([vbCode, id], map: "client_loan_loss_provisoning_pkey1")
+  @@unique([id, vbCode], map: "client_loan_loss_provisoning_pkey")
+  @@index([clientLoanLossProvisioningModelId], map: "fkIdx_1838")
+  @@index([vbCode], map: "fkIdx_901")
+  @@map("client_loan_loss_provisoning")
+}
+
+model ClientLoanLossProvisioningModel {
+  id                           String                       @id(map: "PK_client_loan_lossprovisioning_model") @db.Char(1)
+  nameEng                      String                       @map("name_eng") @db.VarChar
+  nameLao                      String                       @map("name_lao") @db.VarChar
+  genLoanLossReserveRate       Decimal                      @map("gen_loan_loss_reserve_rate") @db.Decimal
+  needSync                     String?                      @map("need_sync") @db.Char(1)
+  client_loan_loss_provisoning ClientLoanLossProvisioning[]
+
+  @@map("client_loan_lossprovisioning_model")
+}
+
+model ClientSavingArrangement {
+  id                      BigInt    @default(autoincrement())
+  date                    DateTime? @db.Date
+  currentBalance          BigInt?   @map("current_balance")
+  savingAmount            BigInt?   @map("saving_amount")
+  withdrawalAmount        BigInt?   @map("withdrawal_amount")
+  vbCode                  String    @map("vbcode") @db.Char(7)
+  clientSavingConditionId String?   @map("client_saving_condition_id") @db.Char(12)
+  accNumber               String?   @map("acc_number") @db.Char(15)
+  interestNumerator       BigInt?   @map("interest_numerator")
+  synchronized            DateTime? @db.Timestamp(6)
+  needSync                String?   @map("need_sync") @db.Char(1)
+  vb                      VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1470")
+  accounts                Accounts? @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1631")
+
+  @@id([id, vbCode], map: "PK_client_saving_arrangement")
+  @@index([vbCode], map: "fkIdx_1470")
+  @@index([clientSavingConditionId], map: "fkIdx_1509")
+  @@index([accNumber], map: "fkIdx_1631")
+  @@map("client_saving_arrangement")
+}
+
+model ClientSavingCondition {
+  id              String      @db.Char(12)
+  entryDate       DateTime?   @map("entry_date") @db.Timestamp(6)
+  description     String?     @db.VarChar
+  interestRateYn  Boolean?    @map("interest_rate_yn")
+  interest_rate_y Decimal?    @db.Decimal
+  maxSavingAmount BigInt?     @map("max_saving_amount")
+  minSavingAmount BigInt?     @map("min_saving_amount")
+  vbCode          String      @map("vbcode") @db.Char(7)
+  startDate       DateTime    @map("start_date") @db.Date
+  endDate         DateTime?   @map("end_date") @db.Date
+  statusId        String      @map("status_id") @db.Char(1)
+  synchronized    DateTime?   @db.Timestamp(6)
+  needSync        String?     @map("need_sync") @db.Char(1)
+  vb              VillageBank @relation(fields: [vbCode], references: [vbCode], onUpdate: Restrict, map: "FK_1512")
+  status          Status      @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1627")
+
+  @@id([id, vbCode], map: "client_saving_condition_pk")
+  @@index([vbCode], map: "fkIdx_1512")
+  @@index([statusId], map: "fkIdx_1627")
+  @@map("client_saving_condition")
+}
+
+model ClientEquitySavingArrangement {
+  id                            BigInt    @default(autoincrement())
+  accNumber                     String    @map("acc_number") @db.Char(15)
+  date                          DateTime  @db.Date
+  currentBalance                BigInt    @map("current_balance")
+  savingAmount                  BigInt?   @map("saving_amount")
+  withdrawalAmount              BigInt?   @map("withdrawal_amount")
+  vbCode                        String    @map("vbcode") @db.Char(7)
+  interestNumerator             BigInt    @map("interest_numerator")
+  clientEquitySavingConditionId Int       @map("client_equity_saving_condition_id")
+  synchronized                  DateTime? @db.Timestamp(6)
+  statusId                      String    @map("status_id") @db.Char(1)
+  needSync                      String?   @map("need_sync") @db.Char(1)
+  profit_amount                 BigInt?
+  transferIn                    BigInt?   @map("transfer_in")
+  transferOut                   BigInt?   @map("transfer_out")
+  vb                            VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1712")
+  status                        Status    @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_2049")
+  accounts                      Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_2061")
+
+  @@id([id, vbCode], map: "client_equity_saving_arrangement_pk")
+  @@index([vbCode], map: "fkIdx_1712")
+  @@index([clientEquitySavingConditionId], map: "fkIdx_1729")
+  @@index([statusId], map: "fkIdx_2049")
+  @@index([accNumber], map: "fkIdx_2061")
+  @@map("client_equity_saving_arrangement")
+}
+
+model VbNsoSavingArrangement {
+  id                       BigInt                @default(autoincrement())
+  accNumber                String                @map("acc_number") @db.Char(15)
+  date                     DateTime              @db.Date
+  vbNsoSavingConditionId   Int                   @map("vb_nso_saving_condition_id")
+  startDate                DateTime              @map("start_date") @db.Date
+  endDate                  DateTime?             @map("end_date") @db.Date
+  savingPeriodMonths       BigInt                @map("saving_period_months")
+  interestRatePerYear      Decimal               @map("interest_rate_peryear") @db.Decimal
+  initialAmount            BigInt                @map("initial_amount")
+  savingAmount             BigInt?               @map("saving_amount")
+  withdrawalAmount         BigInt?               @map("withdrawal_amount")
+  interestNumerator        BigInt                @map("interest_numerator")
+  interestPaid             BigInt                @map("interest_paid")
+  balance                  BigInt
+  vbCode                   String                @map("vbcode") @db.Char(7)
+  statusId                 String                @map("status_id") @db.Char(1)
+  synchronized             DateTime?             @db.Timestamp(6)
+  needSync                 String?               @map("need_sync") @db.Char(1)
+  savingInterest           BigInt?               @map("saving_interest")
+  special                  Boolean?
+  vb_nso_saving_conditions VbNsoSavingConditions @relation(fields: [vbNsoSavingConditionId], references: [id], onUpdate: Restrict, map: "FK_1868")
+  accounts                 Accounts              @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1871")
+  status                   Status                @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1885")
+  vb                       VbCode                @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_898")
+
+  @@id([id, vbCode], map: "vb_nso_saving_arrangement_pk")
+  @@index([vbNsoSavingConditionId], map: "fkIdx_1868")
+  @@index([accNumber], map: "fkIdx_1871")
+  @@index([statusId], map: "fkIdx_1885")
+  @@index([vbCode], map: "fkIdx_898")
+  @@map("vb_nso_saving_arrangement")
+}
+
+model VbNsoSavingConditions {
+  id                        Int                      @id(map: "PK_vb_nso_conditions") @default(autoincrement())
+  vbNsoSavingTypeId         Int                      @map("vb_nso_saving_type_id")
+  interest_rate_y           Decimal                  @db.Decimal
+  maxSavingAmount           BigInt?                  @map("max_saving_amount")
+  startDate                 DateTime                 @map("start_date") @db.Date
+  endDate                   DateTime?                @map("end_date") @db.Date
+  statusId                  String                   @map("status_id") @db.Char(1)
+  needSync                  String?                  @map("need_sync") @db.Char(1)
+  vb_nso_saving_arrangement VbNsoSavingArrangement[]
+  vb_nso_saving_type        VbNsoSavingType          @relation(fields: [vbNsoSavingTypeId], references: [id], onUpdate: Restrict, map: "FK_1857")
+  status                    Status                   @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1865")
+
+  @@index([vbNsoSavingTypeId], map: "fkIdx_1857")
+  @@index([statusId], map: "fkIdx_1865")
+  @@map("vb_nso_saving_conditions")
+}
+
+model VbNsoSavingType {
+  id                       Int                     @id(map: "PK_vb_nso_saving_type") @default(autoincrement())
+  nameEng                  String                  @map("name_eng") @db.VarChar
+  nameLao                  String                  @map("name_lao") @db.VarChar
+  savingPeriodMonths       Int                     @map("saving_period_months")
+  needSync                 String?                 @map("need_sync") @db.Char(1)
+  vb_nso_saving_conditions VbNsoSavingConditions[]
+
+  @@map("vb_nso_saving_type")
+}
+
+model NsoVbWsloanArrangement {
+  id                      BigInt               @default(autoincrement())
+  accNumber               String               @map("acc_number") @db.Char(15)
+  date                    DateTime             @db.Date
+  nsoVbWsloanConditionId  Int                  @map("nso_vb_wsloan_condition_id")
+  initialAmount           BigInt               @map("initial_amount")
+  maxInitialAmount        BigInt               @map("max_initial_amount")
+  wsloanPeriodMonths      BigInt               @map("wsloan_period_months")
+  startDate               DateTime             @map("start_date") @db.Date
+  endDate                 DateTime?            @map("end_date") @db.Date
+  principalAmountDue      BigInt?              @map("principal_amount_due")
+  individualAmountRepaid  BigInt?              @map("individual_amount_repaid")
+  totalAmountRepaid       BigInt?              @map("total_amount_repaid")
+  interestNumerator       BigInt               @map("interest_numerator")
+  interestDue             BigInt               @map("interest_due")
+  interestPaid            BigInt               @map("interest_paid")
+  interestNotPaid         BigInt               @map("interest_not_paid")
+  balance                 BigInt
+  totalAmountOverdue      BigInt?              @map("total_amount_overdue")
+  vbCode                  String               @map("vbcode") @db.Char(7)
+  statusId                String               @map("status_id") @db.Char(1)
+  synchronized            DateTime?            @db.Timestamp(6)
+  needSync                String?              @map("need_sync") @db.Char(1)
+  monthlyInterestDue      BigInt?              @map("monthly_interest_due")
+  moreLoan                BigInt?              @map("more_loan")
+  vb                      VillageBank          @relation(fields: [vbCode], references: [vbCode], onUpdate: Restrict, map: "FK_1171")
+  nso_vb_wsloan_condition NsoVbWsloanCondition @relation(fields: [nsoVbWsloanConditionId], references: [id], onUpdate: Restrict, map: "FK_1899")
+  accounts                Accounts             @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1904")
+  status                  Status               @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1911")
+
+  @@id([id, vbCode], map: "PK_nso_vb_wsloan_arrangement")
+  @@index([vbCode], map: "fkIdx_1171")
+  @@index([nsoVbWsloanConditionId], map: "fkIdx_1899")
+  @@index([accNumber], map: "fkIdx_1904")
+  @@index([statusId], map: "fkIdx_1911")
+  @@map("nso_vb_wsloan_arrangement")
+}
+
+model NsoVbWsloanCondition {
+  id                        Int                      @id @default(autoincrement())
+  interestRateM             Decimal                  @map("interest_rate_m") @db.Decimal
+  startDate                 DateTime                 @map("start_date") @db.Date
+  endDate                   DateTime?                @map("end_date") @db.Date
+  statusId                  String                   @map("status_id") @db.Char(1)
+  needSync                  String?                  @map("need_sync") @db.Char(1)
+  calculateDaily            Boolean?                 @map("calculate_daily")
+  nso_vb_wsloan_arrangement NsoVbWsloanArrangement[]
+  status                    Status                   @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1896")
+
+  @@index([statusId], map: "fkIdx_1896")
+  @@map("nso_vb_wsloan_condition")
+}
+
+model NsoShares {
+  date                DateTime  @db.Date
+  accNumber           String    @map("acc_number") @db.Char(15)
+  shareBalance        BigInt    @map("share_balance")
+  sharePurchaseAmount BigInt    @map("share_purchase_amount")
+  shareSoldAmount     BigInt    @map("share_sold_amount")
+  vbCode              String    @map("vbcode") @db.Char(7)
+  synchronized        DateTime? @db.Timestamp(6)
+  needSync            String?   @map("need_sync") @db.Char(1)
+  accounts            Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1874")
+  vb                  VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_883")
+
+  @@id([date, vbCode, accNumber])
+  @@index([accNumber], map: "fkIdx_1874")
+  @@index([vbCode], map: "fkIdx_883")
+  @@map("nso_shares")
+}
+
+model VbCommitteeTeam {
+  id                   Int                 @default(autoincrement())
+  vbcId                String?             @map("vbc_id") @db.Char(12)
+  nickName             String              @map("nickname") @db.VarChar
+  firstName            String              @map("firstname") @db.VarChar
+  lastName             String?             @map("lastname") @db.VarChar
+  genderEng            String              @map("gender_eng") @db.VarChar
+  genderLao            String              @map("gender_lao") @db.VarChar
+  phoneNumber          String?             @map("phonenumber") @db.VarChar(15)
+  vbCommitteeRoleId    String              @map("vb_committee_role_id") @db.Char(2)
+  clientId             String              @map("client_id") @db.Uuid
+  startDate            DateTime            @map("start_date") @db.Date
+  endDate              DateTime?           @map("end_date") @db.Date
+  statusId             String              @map("status_id") @db.Char(1)
+  receivesDividend     String              @map("receives_dividend") @db.Char(1)
+  realDividendDistrKey Decimal             @map("real_dividend_distr_key") @db.Decimal
+  accNumber            String?             @map("acc_number") @db.Char(15)
+  vbCode               String              @map("vbcode") @db.Char(7)
+  synchronized         DateTime?           @db.Timestamp(6)
+  needSync             String?             @map("need_sync") @db.Char(1)
+  vbResponsibility     String?             @map("vb_responsibility") @db.VarChar
+  isVbc                Boolean?            @map("is_vbc")
+  client               Client              @relation(fields: [clientId], references: [id], onUpdate: Restrict, map: "FK_1058")
+  vb                   VillageBank         @relation(fields: [vbCode], references: [vbCode], onUpdate: Restrict, map: "FK_1113")
+  vbCommitteeRole      VbCommitteeTeamRole @relation(fields: [vbCommitteeRoleId], references: [id], onUpdate: Restrict, map: "FK_1598")
+  status               Status              @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1605")
+  accounts             Accounts?           @relation(fields: [accNumber], references: [accNumber], onDelete: Restrict, onUpdate: Restrict, map: "FK_1799")
+
+  @@id([id, vbCode], map: "vb_committeeteam_pk")
+  @@index([clientId], map: "fkIdx_1058")
+  @@index([vbCode], map: "fkIdx_1113")
+  @@index([vbCommitteeRoleId], map: "fkIdx_1598")
+  @@index([statusId], map: "fkIdx_1605")
+  @@index([accNumber], map: "fkIdx_1799")
+  @@map("vb_committeeteam")
+}
+
+model VbCommitteeTeamRole {
+  id                  String            @id(map: "PK_vb_committeeteam_role") @db.Char(2)
+  nameEng             String            @map("name_eng") @db.VarChar
+  nameLao             String            @map("name_lao") @db.VarChar
+  stdDividendDistrKey Decimal           @map("std_dividend_distr_key") @db.Decimal
+  needSync            String?           @map("need_sync") @db.Char(1)
+  committeeTeams      VbCommitteeTeam[]
+
+  @@map("vb_committeeteam_role")
+}
+
+model VbFieldstaffMatching {
+  id            Int         @default(autoincrement())
+  nsoEmployeeId String      @map("nso_employee_id") @db.Char(6)
+  vbCode        String      @map("vbcode") @db.Char(7)
+  nsoOfficeId   String?     @map("nso_office_id") @db.Char(6)
+  needSync      String?     @map("need_sync") @db.Char(1)
+  nsoOffice     NsoOffice?  @relation(fields: [nsoOfficeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_2008")
+  nsoEmployee   NsoEmployee @relation(fields: [nsoEmployeeId], references: [id], onUpdate: Restrict, map: "FK_530")
+  vb            VbCode      @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_992")
+
+  @@id([id, vbCode], map: "vb_fieldstaff_matching_pk")
+  @@index([nsoOfficeId], map: "fkIdx_2008")
+  @@index([nsoEmployeeId], map: "fkIdx_530")
+  @@index([vbCode], map: "fkIdx_992")
+  @@map("vb_fieldstaff_matching")
+}
+
+model VbAssetArrangement {
+  id                        BigInt      @default(autoincrement())
+  accNumber                 String      @map("acc_number") @db.Char(15)
+  vbAssetTypeId             String      @map("vb_asset_type_id") @db.Char(2)
+  inventoryNo               String      @map("inventory_no") @db.Char(5)
+  description               String      @db.VarChar
+  purchaseDate              DateTime    @map("purchase_date") @db.Date
+  purchaseAmount            BigInt      @map("purchase_amount")
+  currentValue              BigInt      @map("current_value")
+  depreciationAmountMonthly BigInt      @map("depreciation_amount_monthly")
+  depreciationAccumulated   Int         @map("depreciation_accumulated")
+  date                      DateTime    @db.Date
+  depreciationPeriodTotal   String      @map("depreciation_period_total") @db.Char(3)
+  depreciationPeriodLeft    String      @map("depreciation_period_left") @db.Char(3)
+  vbCode                    String      @map("vbcode") @db.Char(7)
+  statusId                  String      @map("status_id") @db.Char(1)
+  synchronized              DateTime?   @db.Timestamp(6)
+  needSync                  String?     @map("need_sync") @db.Char(1)
+  firstDayOfUse             DateTime?   @map("first_day_of_use") @db.Date
+  originalPurchaseAmount    BigInt?     @map("original_purchase_amount")
+  depreciationCurrentYear   DateTime?   @map("depreciation_current_year") @db.Date
+  vb                        VbCode      @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1197")
+  vbAssetType               VbAssetType @relation(fields: [vbAssetTypeId], references: [id], onUpdate: Restrict, map: "FK_1658")
+  accounts                  Accounts    @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1661")
+  status                    Status      @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1668")
+
+  @@id([id, vbCode], map: "vb_asset_arrangement_pk")
+  @@index([vbCode], map: "fkIdx_1197")
+  @@index([vbAssetTypeId], map: "fkIdx_1658")
+  @@index([accNumber], map: "fkIdx_1661")
+  @@index([statusId], map: "fkIdx_1668")
+  @@map("vb_asset_arrangement")
+}
+
+model VbAssetType {
+  id                String               @id(map: "PK_vb_asset_type") @db.Char(2)
+  nameEng           String               @map("name_eng") @db.VarChar
+  nameLao           String               @map("name_lao") @db.VarChar
+  deprTimeM         Int                  @map("depr_time_m")
+  depr_percent_y    Decimal              @db.Decimal
+  restAmount        BigInt               @map("rest_amount")
+  needSync          String?              @map("need_sync") @db.Char(1)
+  assetArrangements VbAssetArrangement[]
+
+  @@map("vb_asset_type")
+}
+
+model ProfitDistributionRule {
+  id                              String                          @db.VarChar(12)
+  distrKeyReserve                 Decimal                         @map("distr_key_reserve") @db.Decimal
+  distrKeyVbCommittee             Decimal                         @map("distr_key_vb_committee") @db.Decimal
+  distrKeyMember                  Decimal                         @map("distr_key_member") @db.Decimal
+  distrKeyVbFund                  Decimal                         @map("distr_key_vb_fund") @db.Decimal
+  startDate                       DateTime                        @map("start_date") @db.Date
+  endDate                         DateTime?                       @map("end_date") @db.Date
+  statusId                        String                          @map("status_id") @db.Char(1)
+  vbCode                          String                          @map("vbcode") @db.Char(7)
+  synchronized                    DateTime?                       @db.Timestamp(6)
+  needSync                        String?                         @map("need_sync") @db.Char(1)
+  maxDivToMember                  Decimal?                        @map("max_div_to_member") @db.Decimal
+  useMaxDivToMember               Boolean?                        @map("use_max_div_to_member")
+  distrKeyWelfare                 Decimal?                        @map("distr_key_welfare") @db.Decimal
+  profit_distribution_arrangement ProfitDistributionArrangement[]
+  vb                              VbCode                          @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1678")
+  status                          Status                          @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1689")
+
+  @@id([id, vbCode], map: "PK_profit_distribution_rule")
+  @@index([vbCode], map: "fkIdx_1678")
+  @@index([statusId], map: "fkIdx_1689")
+  @@map("profit_distribution_rule")
+}
+
+model ProfitDistributionArrangement {
+  id                       Int                    @default(autoincrement())
+  date                     DateTime               @db.Date
+  totalProfitY             BigInt                 @map("total_profit_y")
+  totalProfitToMember      BigInt                 @map("total_profit_to_member")
+  totalProfitToVbc         BigInt                 @map("total_profit_to_vbc")
+  totalProfitToVbFund      BigInt                 @map("total_profit_to_vb_fund")
+  totalProfitToReserve     BigInt                 @map("total_profit_to_reserve")
+  profitDistributionRuleId String                 @map("profit_distribution_rule_id") @db.VarChar(12)
+  vbCode                   String                 @map("vbcode") @db.Char(7)
+  synchronized             DateTime?              @db.Timestamp(6)
+  needSync                 String?                @map("need_sync") @db.Char(1)
+  totalProfitToWelfare     BigInt?                @map("total_profit_to_welfare")
+  profit_distribution_rule ProfitDistributionRule @relation(fields: [profitDistributionRuleId, vbCode], references: [id, vbCode], onUpdate: Restrict, map: "FK_1696")
+  vb                       VbCode                 @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1699")
+
+  @@id([id, date, vbCode])
+  @@unique([id, vbCode], map: "PK_profit_distribution_arrangement")
+  @@index([profitDistributionRuleId, vbCode], map: "fkIdx_1696")
+  @@index([vbCode], map: "fkIdx_1699")
+  @@map("profit_distribution_arrangement")
+}
+
+model ProfitDistrVbFund {
+  date         DateTime  @db.Timestamp(0)
+  accNumber    String    @map("acc_number") @db.Char(15)
+  amount       BigInt
+  vbCode       String    @map("vbcode") @db.Char(7)
+  synchronized DateTime? @db.Timestamp(6)
+  needSync     String?   @map("need_sync") @db.Char(1)
+  vb           VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1769")
+  accounts     Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1772")
+
+  @@id([date, vbCode], map: "PK_profit_distr_vb_fund")
+  @@index([vbCode], map: "fkIdx_1769")
+  @@index([accNumber], map: "fkIdx_1772")
+  @@map("profit_distr_vb_fund")
+}
+
+model ProfitDistrVbMember {
+  date              DateTime  @db.Timestamp(0)
+  bankbookNumber    String?   @map("bankbooknumber") @db.Char(5)
+  accNumber         String    @map("acc_number") @db.Char(15)
+  firstName1        String?   @map("firstname1") @db.VarChar
+  lastName1         String?   @map("lastname1") @db.VarChar
+  firstName2        String?   @map("firstname2") @db.VarChar
+  lastName2         String?   @map("lastname2") @db.VarChar
+  amount            BigInt
+  vbCode            String    @map("vbcode") @db.Char(7)
+  synchronized      DateTime? @db.Timestamp(6)
+  needSync          String?   @map("need_sync") @db.Char(1)
+  interestNumerator BigInt?   @map("interest_numerator")
+  gender1           String?   @db.VarChar
+  gender2           String?   @db.VarChar
+  accounts          Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1776")
+  vb                VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1782")
+
+  @@id([date, accNumber], map: "PK_profit_distr_vb_member")
+  @@index([accNumber], map: "fkIdx_1776")
+  @@index([vbCode], map: "fkIdx_1782")
+  @@map("profit_distr_vb_member")
+}
+
+model ProfitDistrVbReserve {
+  date         DateTime  @db.Timestamp(0)
+  accNumber    String    @map("acc_number") @db.Char(15)
+  amount       BigInt
+  vbCode       String    @map("vbcode") @db.Char(7)
+  synchronized DateTime? @db.Timestamp(6)
+  needSync     String?   @map("need_sync") @db.Char(1)
+  accounts     Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1762")
+  vb           VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1766")
+
+  @@id([date, vbCode], map: "PK_profit_distr_vb_reserve")
+  @@index([accNumber], map: "fkIdx_1762")
+  @@index([vbCode], map: "fkIdx_1766")
+  @@map("profit_distr_vb_reserve")
+}
+
+model ProfitDistrVbc {
+  date         DateTime  @db.Date
+  accNumber    String    @map("acc_number") @db.Char(15)
+  amount       BigInt
+  vbCode       String    @map("vbcode") @db.Char(7)
+  synchronized DateTime? @db.Timestamp(6)
+  needSync     String?   @map("need_sync") @db.Char(1)
+  clientId     String    @map("client_id") @db.Uuid
+  accounts     Accounts  @relation(fields: [accNumber], references: [accNumber], onUpdate: Restrict, map: "FK_1786")
+  vb           VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1789")
+  client       Client    @relation(fields: [clientId], references: [id], onUpdate: Restrict, map: "FK_1802")
+
+  @@id([date, accNumber], map: "PK_profit_distr_vbc")
+  @@index([accNumber], map: "fkIdx_1786")
+  @@index([vbCode], map: "fkIdx_1789")
+  @@map("profit_distr_vbc")
+}
+
+model Events {
+  id            Int          @default(autoincrement())
+  date          DateTime     @db.Timestamp(0)
+  type          String?      @db.VarChar
+  nsoEmployeeId String?      @map("nso_employee_id") @db.Char(6)
+  vbCode        String?      @map("vbcode") @db.Char(7)
+  status        String?      @db.VarChar
+  needSync      String?      @map("need_sync") @db.Char(1)
+  description   String?
+  nsoEmployee   NsoEmployee? @relation(fields: [nsoEmployeeId], references: [id], onUpdate: Restrict, map: "FK_1136")
+  vb            VbCode?      @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1164")
+
+  @@id([id], map: "events_pk")
+  @@index([nsoEmployeeId], map: "fkIdx_1136")
+  @@index([vbCode], map: "fkIdx_1164")
+  @@map("events")
+}
+
+model Notification {
+  id               Int          @default(autoincrement())
+  timeCreated      DateTime     @map("time_created") @db.Timestamp(6)
+  nsoEmployeeId    String?      @map("nso_employee_id") @db.Char(6)
+  notificationText String?      @map("notification_text") @db.VarChar
+  eventsId         Int?         @map("events_id")
+  needSync         String?      @map("need_sync") @db.Char(1)
+  userRoleId       String?      @map("user_role_id") @db.Char(3)
+  statusId         String?      @map("status_id") @db.Char(1)
+  description      String?      @db.VarChar
+  vbCode           String?      @map("vbcode") @db.Char(7)
+  nsoEmployee      NsoEmployee? @relation(fields: [nsoEmployeeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_995")
+  status           Status?      @relation(fields: [statusId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_status")
+  systemRole       SystemRole?  @relation(fields: [userRoleId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_user_role")
+  vb               VbCode?      @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_vbcode")
+
+  @@id([id], map: "notification_pk")
+  @@index([eventsId], map: "fkIdx_1139")
+  @@index([nsoEmployeeId], map: "fkIdx_995")
+  @@map("notification")
+}
+
+model Ews {
+  id                                            BigInt    @default(autoincrement())
+  date                                          DateTime  @db.Timestamp(0)
+  vbCode                                        String    @map("vbcode") @db.Char(7)
+  carRate                                       Decimal?  @map("car_rate") @db.Decimal
+  resultCarRate                                 Decimal?  @map("result_car_rate") @db.Decimal
+  savingRate                                    Decimal?  @map("saving_rate") @db.Decimal
+  resultSavingRate                              Decimal?  @map("result_saving_rate") @db.Decimal
+  withdrawalRate                                Decimal?  @map("withdrawal_rate") @db.Decimal
+  resultWithdrawlRate                           Decimal?  @map("result_withdrawl_rate") @db.Decimal
+  withdrawMoreThanSaving                        Decimal?  @map("withdraw_more_then_saving") @db.Decimal
+  resultWithdrawlMoreThanSaving                 Decimal?  @map("result_withdrawl_more_then_saving") @db.Decimal
+  par                                           Decimal?  @db.Decimal
+  resualtPar                                    Decimal?  @map("resualt_par") @db.Decimal
+  interestOverduePerMonth                       Decimal?  @map("interest_overdue_per_month") @db.Decimal
+  resultInterestOverduePerMonth                 Decimal?  @map("result_interest_overdue_per_month") @db.Decimal
+  threeMonthsAverageSavingRate                  Decimal?  @map("three_months_average_saving_rate") @db.Decimal
+  result3MonthsAverageSavingRate1               Decimal?  @map("result_3_months_average_saving_rate_1") @db.Decimal
+  totalInterestOverdueOutstandingLoan           Decimal?  @map("total_interest_overdue_outstanding_loan") @db.Decimal
+  resultTotalInterestOverdueOutstandingLoanRate Decimal?  @map("result_total_interest_overdue_outstanding_loan_rate") @db.Decimal
+  totalResults                                  Decimal?  @map("total_results") @db.Decimal
+  synchronized                                  DateTime? @db.Timestamp(6)
+  needSync                                      String?   @map("need_sync") @db.Char(1)
+  cir                                           Decimal?  @db.Decimal
+  resultCir                                     Decimal?  @map("result_cir") @db.Decimal
+  vb                                            VbCode    @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_2119")
+
+  @@id([id, vbCode], map: "PK_ewe")
+  @@index([vbCode], map: "fkIdx_2119")
+  @@map("ews")
+}
+
+model Nso {
+  id                     String        @id(map: "nso_pk") @db.Char(3)
+  licensingFormEng       String?       @map("licensingform_eng") @db.VarChar
+  licensingFormLao       String?       @map("licensingform_lao") @db.VarChar
+  nsoNameEng             String?       @map("nso_name_eng") @db.VarChar
+  nsoNameLao             String?       @map("nso_name_lao") @db.VarChar
+  addressLineEng         String?       @map("adressline_eng") @db.VarChar
+  addressLineLao         String?       @map("adressline_lao") @db.VarChar
+  addressCityEng         String?       @map("adresscity_eng") @db.VarChar
+  addressCityLao         String?       @map("adresscity_lao") @db.VarChar
+  provinceId             String?       @map("province_id") @db.Char(2)
+  districtId             String?       @map("district_id") @db.Char(4)
+  countryId              String?       @map("country_id") @db.Char(3)
+  statusId               String?       @map("status_id") @db.Char(1)
+  distrKeyVbFundMin      Decimal?      @map("distr_key_vb_fund_min") @db.Decimal
+  distrKeyVbFundMax      Decimal?      @map("distr_key_vb_fund_max") @db.Decimal
+  distrKeyReserveMin     Decimal?      @map("distr_key_reserve_min") @db.Decimal
+  distrKeyVbCommitteeMin Decimal?      @map("distr_key_vb_committee_min") @db.Decimal
+  distrKeyVbCommitteeMax Decimal?      @map("distr_key_vb_committee_max") @db.Decimal
+  needSync               String?       @map("need_sync") @db.Char(1)
+  distrKeyVbWelfareMin   Decimal?      @map("distr_key_vb_welfare_min") @db.Decimal
+  status                 Status?       @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1591")
+  country                Country?      @relation(fields: [countryId], references: [country_id], onUpdate: Restrict, map: "FK_1634")
+  district               District?     @relation(fields: [districtId], references: [id], onUpdate: Restrict, map: "FK_290")
+  province               Province?     @relation(fields: [provinceId], references: [id], onUpdate: Restrict, map: "FK_293")
+  nsoEmployees           NsoEmployee[]
+  nsoFeeModels           NsoFeeModel[]
+  nsoOffices             NsoOffice[]
+
+  @@index([statusId], map: "fkIdx_1591")
+  @@index([countryId], map: "fkIdx_1634")
+  @@index([districtId], map: "fkIdx_290")
+  @@index([provinceId], map: "fkIdx_293")
+  @@map("nso")
+}
+
+model NsoOffice {
+  id                    String                 @id(map: "nso_office_pk") @db.Char(6)
+  officeNo              String?                @map("office_no") @db.Char(3)
+  provinceId            String?                @map("province_id") @db.Char(2)
+  districtId            String?                @map("district_id") @db.Char(4)
+  locationEng           String?                @map("location_eng") @db.VarChar
+  locationLao           String?                @map("location_lao") @db.VarChar
+  nsoId                 String?                @map("nso_id") @db.Char(3)
+  statusId              String?                @map("status_id") @db.Char(1)
+  needSync              String?                @map("need_sync") @db.Char(1)
+  nsoEmployees          NsoEmployee[]
+  nso                   Nso?                   @relation(fields: [nsoId], references: [id], onUpdate: Restrict, map: "FK_1086")
+  district              District?              @relation(fields: [districtId], references: [id], onUpdate: Restrict, map: "FK_1401")
+  status                Status?                @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1588")
+  province              Province?              @relation(fields: [provinceId], references: [id], onUpdate: Restrict, map: "FK_978")
+  vbFieldStaffMatchings VbFieldstaffMatching[]
+  villageBanks          VillageBank[]
+
+  @@index([nsoId], map: "fkIdx_1086")
+  @@index([districtId], map: "fkIdx_1401")
+  @@index([statusId], map: "fkIdx_1588")
+  @@index([provinceId], map: "fkIdx_978")
+  @@map("nso_office")
+}
+
+model NsoEmployee {
+  id                    String                 @id @db.Char(6)
+  emplNo                String?                @map("empl_no") @db.Char(3)
+  userName              String?                @map("user_name") @db.VarChar
+  nsoId                 String?                @map("nso_id") @db.Char(3)
+  nsoOfficeId           String?                @map("nso_office_id") @db.Char(6)
+  firstNameEng          String?                @map("firstname_eng") @db.VarChar
+  lastNameEng           String?                @map("lastname_eng") @db.VarChar
+  firstNameLao          String?                @map("firstname_lao") @db.VarChar
+  lastNameLao           String?                @map("lastname_lao") @db.VarChar
+  birthDate             DateTime?              @map("birthdate") @db.Date
+  birthPlace            String?                @map("birthplace") @db.VarChar
+  genderEng             String?                @map("gender_eng") @db.Char(10)
+  genderLao             String?                @map("gender_lao") @db.Char(10)
+  hireDate              DateTime?              @map("hiredate") @db.Date
+  dateLeft              DateTime?              @map("date_left") @db.Date
+  phone                 String?                @db.VarChar
+  statusId              String?                @map("status_id") @db.Char(1)
+  grossSalary           BigInt?                @map("gross_salary")
+  email                 String?                @db.VarChar
+  jobTitleId1           String?                @map("jobtitle_id_1") @db.Char(2)
+  jobTitleId2           String?                @map("jobtitle_id_2") @db.Char(2)
+  bankAccount           String?                @map("bankaccount") @db.VarChar
+  bankName              String?                @map("bankname") @db.VarChar
+  countryId             String?                @map("country_id") @db.Char(3)
+  needSync              String?                @map("need_sync") @db.Char(1)
+  years                 Int?                   @map("years")
+  events                Events[]
+  notifications         Notification[]
+  country               Country?               @relation(fields: [countryId], references: [country_id], onUpdate: Restrict, map: "FK_1415")
+  status                Status?                @relation(fields: [statusId], references: [id], onUpdate: Restrict, map: "FK_1594")
+  jobTitle1             JobTitle?              @relation("JobTitle1", fields: [jobTitleId1], references: [id], onUpdate: Restrict, map: "FK_2000")
+  jobTitle2             JobTitle?              @relation("JobTitle2", fields: [jobTitleId2], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_2003")
+  nsoOffice             NsoOffice?             @relation(fields: [nsoOfficeId], references: [id], onUpdate: Restrict, map: "FK_473")
+  nso                   Nso?                   @relation(fields: [nsoId], references: [id], onUpdate: Restrict, map: "FK_986")
+  systemUsers           SystemUser[]
+  vbFieldStaffMatchings VbFieldstaffMatching[]
+
+  @@index([countryId], map: "fkIdx_1415")
+  @@index([statusId], map: "fkIdx_1594")
+  @@index([jobTitleId1], map: "fkIdx_2000")
+  @@index([jobTitleId2], map: "fkIdx_2003")
+  @@index([nsoOfficeId], map: "fkIdx_473")
+  @@index([nsoId], map: "fkIdx_986")
+  @@map("nso_employee")
+}
+
+model NsoFeeModel {
+  id                 String              @id @db.Char(2)
+  nsoYearlyFee       BigInt?             @map("nso_yearlyfee")
+  nsoMonthlyFee      BigInt?             @map("nso_monthlyfee")
+  isCapped           Boolean?            @map("is_capped")
+  startDate          DateTime            @map("start_date") @db.Date
+  endDate            DateTime?           @map("end_date") @db.Date
+  nsoId              String?             @map("nso_id") @db.Char(3)
+  statusId           String?             @map("status_id") @db.Char(1)
+  needSync           String?             @map("need_sync") @db.Char(1)
+  max_fee            Decimal?            @db.Decimal
+  step1              Decimal?            @db.Decimal
+  rateApplied1       Decimal?            @map("rate_applied1") @db.Decimal
+  step2              Decimal?            @db.Decimal
+  rateApplied2       Decimal?            @map("rate_applied2") @db.Decimal
+  step3              Decimal?            @db.Decimal
+  rateApplied3       Decimal?            @map("rate_applied3") @db.Decimal
+  step4              Decimal?            @db.Decimal
+  rateApplied4       Decimal?            @map("rate_applied4") @db.Decimal
+  step5              Decimal?            @db.Decimal
+  rateApplied5       Decimal?            @map("rate_applied5") @db.Decimal
+  step6              Decimal?            @db.Decimal
+  rateApplied6       Decimal?            @map("rate_applied6") @db.Decimal
+  step7              Decimal?            @db.Decimal
+  rateApplied7       Decimal?            @map("rate_applied7") @db.Decimal
+  step8              Decimal?            @db.Decimal
+  rateApplied8       Decimal?            @map("rate_applied8") @db.Decimal
+  status             Status?             @relation(fields: [statusId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_2012")
+  nso                Nso?                @relation(fields: [nsoId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_NSO_MODEL")
+  nsoFeeTransactions NsoFeeTransaction[]
+
+  @@index([statusId], map: "fkIdx_2012")
+  @@map("nso_fee_model")
+}
+
+model NsoFeeTransaction {
+  id                            BigInt      @default(autoincrement())
+  date                          DateTime    @db.Date
+  nsoFeeModelId                 String?     @map("nso_fee_model_id") @db.Char(2)
+  totalOutstandingLoan          BigInt?     @map("total_outstanding_loan")
+  wslFromNso                    BigInt?     @map("wsl_from_nso")
+  outstandingLoanMinusWsl       BigInt?     @map("outstandingloan_minus_wsl")
+  nsoFeeDueThisMonth            BigInt?     @map("nso_fee_due_this_month")
+  nsoFeeDueAccumCurrentBusYear  BigInt?     @map("nso_fee_due_accum_current_bus_year")
+  nsoFeePaidThisMonth           BigInt?     @map("nso_fee_paid_this_month")
+  nsoFeePaidAccumCurrentBusYear BigInt?     @map("nso_fee_paid_accum_current_bus_year")
+  nso_fee_unpaid                BigInt?
+  vbCode                        String?     @map("vbcode") @db.Char(7)
+  synchronized                  DateTime?   @db.Timestamp(6)
+  needSync                      String?     @map("need_sync") @db.Char(1)
+  nsoVat                        BigInt?     @map("nso_vat")
+  nsoFeeDue                     BigInt?     @map("nso_fee_due")
+  nsoVatThisMonth               BigInt?     @map("nso_vat_this_month")
+  nsoId                         String?     @map("nso_id") @db.Char(3)
+  nsoFeeModel                   NsoFeeModel? @relation(fields: [nsoFeeModelId], references: [id], onUpdate: Restrict, map: "FK_1237")
+  vb                            VbCode?     @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_907")
+
+  @@id([id], map: "PK_nso_fee_transaction")
+  @@index([nsoFeeModelId], map: "fkIdx_1237")
+  @@index([vbCode], map: "fkIdx_907")
+  @@map("nso_fee_transaction")
+}
+
+model tbl_llp_deduction {
+  vbcode      String   @id @db.Char(7)
+  first_year  Boolean?
+  second_year Boolean?
+  need_sync   String?  @db.Char(1)
+
+  @@map("_tbl_llp_deduction")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model account_structrue_temp {
+  id                        BigInt?
+  vbcode                    String?  @db.Char
+  acc_lv1_parent_of_lv1     String?  @db.Char(15)
+  balance_lv1_parent_of_lv1 BigInt?
+  sum_lv1_children_of_lv1   Decimal? @db.Decimal
+  account_lv1               String?  @db.Char(15)
+  balance_lv1               BigInt?
+  sum_lv2                   Decimal? @db.Decimal
+  account_lv2               String?  @db.Char(15)
+  balance_lv2               BigInt?
+  sum_lv3                   Decimal? @db.Decimal
+  account_lv3               String?  @db.Char(15)
+  balance_lv3               BigInt?
+  sum_lv4                   Decimal? @db.Decimal
+  account_lv4               String?  @db.Char(15)
+  balance_lv4               BigInt?
+  sum_lv5                   Decimal? @db.Decimal
+  account_lv5               String?  @db.Char(15)
+  balance_lv5               BigInt?
+  sum_lv6                   Decimal? @db.Decimal
+  account_lv6               String?  @db.Char(15)
+  balance_lv6               BigInt?
+
+  @@ignore
+}
+
+model attribute {
+  att_id       Decimal     @id @db.Decimal
+  att_value    String?
+  att_score    Decimal?    @db.Decimal(255, 0)
+  indicator_id String?
+  min          Decimal?    @db.Decimal(255, 0)
+  max          Decimal?    @db.Decimal(255, 0)
+  indicators   indicators? @relation(fields: [indicator_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "indicator_id")
+}
+
+model bank {
+  bank_id   String  @id @db.VarChar
+  name_lao  String? @db.VarChar(255)
+  name_eng  String? @db.VarChar(255)
+  status_id String? @db.VarChar(2)
+}
+
+model bank_saving_accounts {
+  acc_number      String    @db.Char(15)
+  bank_acc_number String?   @db.VarChar
+  bank_id         String?   @db.VarChar
+  current_balance BigInt?
+  interest_rate   Float?    @db.Real
+  opening_date    DateTime? @db.Date
+  saving_type_id  String?   @db.Char(1)
+  description     String?   @db.VarChar
+  status_id       String?   @db.Char(1)
+  vbcode          String    @db.Char(7)
+  need_sync       String?   @db.Char(1)
+  last_update     DateTime? @default(now()) @db.Timestamp(6)
+  acc_name        String?   @db.VarChar
+
+  @@id([acc_number, vbcode], map: "bank_saving_account_pkey")
+}
+
+model bod_report {
+  report_month                String    @db.VarChar(255)
+  vbcode                      String    @db.Char(7)
+  no_saving_bankbook          Int?
+  no_client                   Int?
+  no_female_client            Int?
+  deposit                     BigInt?
+  withdraw                    BigInt?
+  current_saving_balance      BigInt?
+  current_loan_outstanding    BigInt?
+  interest_overdue            BigInt?
+  interest_overdue_in_percent Decimal?  @db.Decimal
+  par                         Decimal?  @db.Decimal
+  overdue0                    BigInt?
+  overdue1_30                 BigInt?
+  overdue31_90                BigInt?
+  overdue91_180               BigInt?
+  overdue_over_181            BigInt?
+  activityrate                Decimal?  @db.Decimal
+  savingrate                  Decimal?  @db.Decimal
+  general_reserve             BigInt?
+  result_of_the_year          BigInt?
+  amount_total_wsl            BigInt?
+  share_balance               BigInt?
+  ets_member_dividend         Decimal?  @db.Decimal
+  last_update                 DateTime? @db.Timestamp(6)
+  no_vbc                      Int?
+  no_vbc_female               Int?
+  no_joint_acc                Int?
+  no_deposit                  Int?
+  no_withdrawal               Int?
+  asset_amount                BigInt?
+  no_loan_account             Int?
+  interest_paid               BigInt?
+  new_loan_amount             BigInt?
+  principal_paid              BigInt?
+  interest_due                BigInt?
+  no_female_alone             Int?
+  nso_saving_amount           BigInt?
+  retained_erning             BigInt?
+  other_income                BigInt?
+  other_expenses              BigInt?
+  village_fun_in              BigInt?
+  village_fun_out             BigInt?
+  amount_77777                BigInt?
+  amount_88888                BigInt?
+  amount_99999                BigInt?
+  female_saving_amount        BigInt?
+  no_female_loan_account      Int?
+  female_loan_amount          BigInt?
+  written_payback_amount      BigInt?
+  cash                        BigInt?   @map("_cash")
+  nsoreserve_amount           BigInt?
+
+  @@id([vbcode, report_month])
+}
+
+model bol_report {
+  report_month           String    @id @db.VarChar(10)
+  no_villagebank         Int?
+  housholds              Int?
+  clients                Int?
+  female                 Int?
+  no_saving_account      BigInt?
+  assets_amount          BigInt?
+  loan_amount            BigInt?
+  loan_overdue_amount    BigInt?
+  profitable_villagebank Int?
+  no_clients_activity    Int?
+  last_update            DateTime? @db.Timestamp(6)
+}
+
+model cash_book_view {
+  id              Int
+  date            DateTime? @db.Timestamp(0)
+  acc_number      String?   @db.Char(15)
+  income          BigInt?
+  expenses        BigInt?
+  balance         BigInt?
+  description     String?   @db.VarChar(255)
+  vbcode          String    @db.Char(7)
+  nso_employee_id String?   @db.Char(6)
+  need_sync       String?   @db.Char(1)
+  last_update     DateTime? @default(now()) @db.Timestamp(6)
+  bankbooknumber  String?   @db.Char(5)
+
+  @@id([id, vbcode])
+}
+
+model client_collateral_arrangement {
+  collateral_id         BigInt
+  collateral_name       String?   @db.VarChar(255)
+  collateral_type       String?   @db.Char(2)
+  collateral_detail     String?
+  collateral_value      BigInt?
+  identification_number String?   @db.VarChar(255)
+  collateral_rate       Float?    @db.Real
+  value_for_loan        BigInt?
+  loan_account          String    @db.Char(15)
+  vbcode                String    @db.Char(7)
+  status_id             String    @db.Char(1)
+  vehicle_type          String?   @db.VarChar(255)
+  vehicle_model         String?   @db.VarChar(255)
+  saving_account        String?   @db.Char(15)
+  bankbooknumber        String?   @db.Char(5)
+  need_sync             String?   @db.Char(1)
+  last_update           DateTime? @default(now()) @db.Timestamp(6)
+
+  @@id([collateral_id, vbcode], map: "client_collateral_arrangement_pkey1")
+}
+
+model client_note {
+  id        BigInt
+  date      DateTime? @db.Timestamp(0)
+  bankbook  String?   @db.VarChar(255)
+  vbcode    String    @db.VarChar(255)
+  title     String?   @db.VarChar(255)
+  details   String?
+  need_sync String?   @db.Char(1)
+
+  @@id([id, vbcode])
+}
+
+model collateral_type {
+  id       String  @id @db.Char(2)
+  type_eng String? @db.VarChar(255)
+  type_lao String? @db.VarChar(255)
+}
+
+model credit_score_history {
+  vbcode       String    @db.VarChar
+  month        String    @db.VarChar
+  bankbookno   String    @db.VarChar
+  indicator_id String    @db.VarChar
+  value        String?   @db.VarChar
+  score        String?   @db.VarChar
+  weight       Int?
+  total_score  Int?
+  last_update  DateTime? @db.Timestamp(6)
+
+  @@id([vbcode, month, bankbookno, indicator_id])
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model db_version {
+  version_number     String?   @db.VarChar(10)
+  date               DateTime? @db.Date
+  change_dbstructure String?   @db.VarChar
+  change_content     String?   @db.VarChar
+
+  @@ignore
+}
+
+model document_type {
+  id       Int     @id(map: "documents_type_pkey")
+  name_lao String? @db.VarChar(255)
+  name_eng String? @db.VarChar(255)
+}
+
+model documents {
+  id            Int       @id(map: "document_pkey")
+  file_name     String?   @db.VarChar(255)
+  pdf_file      Bytes?
+  file_extn     String?   @db.VarChar(255)
+  need_sync     String?   @db.Char(1)
+  document_     String?   @db.VarChar(255)
+  document_type Int?
+  date          DateTime? @db.Date
+}
+
+model indicators {
+  id        String      @id
+  name_eng  String?
+  name_lao  String?
+  weight    Int?        @db.SmallInt
+  attribute attribute[]
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model last_sync {
+  type             String?   @db.VarChar(255)
+  time             DateTime? @db.Timestamp(6)
+  succeeded        Boolean?
+  local_config_ip  String?   @db.VarChar(255)
+  local_config_db  String?   @db.VarChar(255)
+  server_config_ip String?   @db.VarChar(255)
+  server_config_db String?   @db.VarChar(255)
+
+  @@ignore
+}
+
+model loan_report {
+  date                          DateTime  @db.Timestamp(0)
+  loan_purpose                  String    @db.VarChar(16)
+  no_of_client                  Decimal?  @db.Decimal
+  client_percenatge             String?   @db.VarChar
+  outstanding                   Decimal?  @db.Decimal
+  outstanding_percenatge        String?   @db.VarChar
+  interest_unpaid               Decimal?  @db.Decimal
+  interest_unpaid_percenatge    String?   @db.VarChar
+  principle_unpaid              Decimal?  @db.Decimal
+  principle_unpaid_percenatge   String?   @db.VarChar
+  overdue_0_day                 Decimal?  @db.Decimal
+  overdue_0_day_percenatge      String?   @db.VarChar
+  overdue_1_30_day              Decimal?  @db.Decimal
+  overdue_1_30_day_percenatge   String?   @db.VarChar
+  overdue_31_90_day             Decimal?  @db.Decimal
+  overdue_31_90_day_percenatge  String?   @db.VarChar
+  overdue_91_180_day            Decimal?  @db.Decimal
+  overdue_91_180_day_percenatge String?   @db.VarChar
+  overdue_181_day               Decimal?  @db.Decimal
+  overdue_181_day_percenatge    String?   @db.VarChar
+  synchronized                  DateTime? @db.Timestamp(6)
+  need_sync                     String?   @db.Char(1)
+  vbcode                        String    @db.VarChar
+  no_of_client_0_30             Decimal?  @db.Decimal
+  no_of_client_31_60            Decimal?  @db.Decimal
+  no_of_client_61_90            Decimal?  @db.Decimal
+  no_of_client_91_180           Decimal?  @db.Decimal
+  no_of_client_181              Decimal?  @db.Decimal
+
+  @@id([date, loan_purpose, vbcode])
+}
+
+model loans_reject {
+  acc_number         String?   @db.Char(15)
+  loan_type_id       String?   @db.VarChar(12)
+  loan_period_months Int?
+  total_loan_amount  BigInt?
+  status_id          String?   @db.Char(1)
+  system_suggest     Boolean?
+  vbcode             String    @db.Char(7)
+  synchronized       DateTime? @db.Timestamp(6)
+  need_sync          String?   @db.Char(1)
+  id                 Int
+  bankbooknumber     String?   @db.Char(5)
+
+  @@id([id, vbcode])
+}
+
+model month_end_report {
+  report_month String  @id @db.VarChar(255)
+  file_name    String? @db.VarChar(255)
+  pdf_file     Bytes?
+  file_extn    String? @db.VarChar(255)
+}
+
+model note_cash {
+  note_date                DateTime @db.Date
+  one_hundred_thousand_lak Int?
+  fifty_lak                Int?
+  twenty_lak               Int?
+  ten_lak                  Int?
+  five_lak                 Int?
+  two_lak                  Int?
+  one_lak                  Int?
+  fivehundre_lak           Int?
+  vbcode                   String   @db.Char(7)
+  user_id                  String?  @db.Char(6)
+  need_sync                String?  @db.Char(1)
+  different                BigInt?
+  reason                   String?  @db.VarChar(255)
+
+  @@id([note_date, vbcode])
+}
+
+model profit_distr_vb_welfare {
+  date         DateTime  @db.Date
+  acc_number   String    @db.Char(15)
+  amount       BigInt
+  vbcode       String    @db.Char(7)
+  synchronized DateTime? @db.Timestamp(6)
+  need_sync    String?   @db.Char(1)
+
+  @@id([date, vbcode])
+}
+
+model report_data {
+  report_month String    @db.VarChar(255)
+  name_en      String?   @db.VarChar(255)
+  name_lao     String?   @db.VarChar(255)
+  value        Float?
+  format       String?   @db.VarChar(255)
+  report_type  String    @db.VarChar(255)
+  last_update  DateTime? @db.Timestamp(6)
+  row_number   Int
+
+  @@id([report_month, row_number, report_type])
+  @@index([report_month], map: "report_month")
+}
+
+model sub_loan_detail {
+  id              String  @id(map: "sub_loan_detial_pkey") @db.Char(2)
+  loan_purpose_id String? @db.Char(2)
+  name_eng        String? @db.VarChar(255)
+  name_lao        String? @db.VarChar(255)
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model sync_info {
+  id                        Int?
+  list                      String?   @db.VarChar(255)
+  synced_from_server        Boolean?
+  synced_from_server_record BigInt?
+  time_synced_from_server   DateTime? @db.Timestamp(6)
+  synced_to_server          Boolean?
+  synced_to_server_record   BigInt?
+  time_synced_to_server     DateTime? @db.Timestamp(6)
+
+  @@ignore
+}
+
+model system_setting {
+  username            String? @db.VarChar(100)
+  password            String? @db.VarChar(100)
+  port                String? @db.VarChar(100)
+  database_name       String? @db.VarChar(100)
+  localhost           String? @db.VarChar(100)
+  server_host         String? @db.VarChar(100)
+  server_username     String? @db.VarChar(100)
+  server_password     String? @db.VarChar(100)
+  server_port         String? @db.VarChar(100)
+  server_databasename String? @db.VarChar(100)
+  id                  String  @id @default("SETTING") @db.VarChar
+  need_sync           String? @db.VarChar(255)
+}
+
+model transaction_code_temp {
+  transaction_code    String  @id(map: "pk_transaction_code") @db.Char(4)
+  name_eng            String  @db.VarChar
+  name_lao            String  @db.VarChar
+  debit_acc_number    String? @db.Char(15)
+  debit_acc_name_eng  String  @db.VarChar
+  debit_acc_name_lao  String? @db.VarChar(150)
+  credit_acc_number   String? @db.Char(15)
+  credit_acc_name_eng String  @db.VarChar(150)
+  credit_acc_name_lao String? @db.VarChar(150)
+  acc_group           String  @db.Char(1)
+  description         String? @db.VarChar
+  need_sync           String? @db.Char(1)
+  debit_change        String? @db.Char(1)
+  credit_change       String? @db.Char(1)
+  balance_changes     String? @db.VarChar
+}
+
+model translation {
+  id        Int     @id(map: "translation_pk") @default(autoincrement())
+  name_eng  String  @db.VarChar
+  name_lao  String  @db.VarChar
+  comment   String? @db.VarChar
+  need_sync String? @db.Char(1)
+}
+
+model vbc_arrangement {
+  id             Int
+  date           DateTime? @db.Date
+  bankbooknumber String?   @db.Char(5)
+  vbc_name       String?   @db.VarChar(255)
+  gender         String?   @db.VarChar(255)
+  phonenumber    String?   @db.Char(11)
+  vbcode         String    @db.Char(8)
+  points         Int?      @db.SmallInt
+  need_sync      String?   @db.Char(1)
+  last_update    DateTime? @default(now()) @db.Timestamp(6)
+  vbc_id         String?   @db.Char(12)
+
+  @@id([id, vbcode], map: "vb_commiteeteammeeting_pkey")
+}
+
+model MeetingNotification {
+  id          String    @id @default(uuid()) @db.Uuid
+  vbCode      String    @map("vb_code") @db.Char(7)
+  meetingDate DateTime  @map("meeting_date") @db.Date
+  message     String    @map("message") @db.VarChar(255)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  // Relations
+  clientNotifications ClientMeetingNotification[]
+
+  @@map("meeting_notification")
+}
+
+model ClientMeetingNotification {
+  id             String              @id @default(uuid()) @db.Uuid
+  notificationId String              @map("notification_id") @db.Uuid
+  username       String              @map("username") @db.VarChar(50)
+  isRead         Boolean             @default(false) @map("is_read")
+  readAt         DateTime?           @map("read_at") @db.Timestamp(6)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamp(6)
+
+  notification MeetingNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  client       ClientAccount? @relation(fields: [username], references: [username], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([notificationId, username], map: "unique_client_notification")
+  @@map("client_meeting_notification")
+}
