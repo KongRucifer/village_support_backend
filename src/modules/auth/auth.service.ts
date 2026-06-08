@@ -28,19 +28,15 @@ export class AuthService {
   ) {}
 
   async loginSystemUser(dto: SystemLoginDto): Promise<SystemTokenResponse> {
-    let user: Awaited<ReturnType<typeof this.prisma.systemUser.findFirst>>;
-
-    try {
-      user = await this.prisma.systemUser.findFirst({
-        where: { userName: dto.userName },
-        include: {
-          roles: { include: { systemRole: true } },
-        },
-      });
-    } catch (err) {
+    const user = await this.prisma.systemUser.findFirst({
+      where: { userName: dto.userName },
+      include: {
+        roles: { include: { systemRole: true } },
+      },
+    }).catch((err: unknown) => {
       this.logger.error('Database error during login', err);
       throw new InternalServerErrorException('Database connection failed');
-    }
+    });
 
     if (!user) {
       throw new UnauthorizedException('Username is incorrect');
