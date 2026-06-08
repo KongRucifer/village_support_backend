@@ -268,15 +268,24 @@ export class VillageDataService {
     });
 
     if (!account) {
-      throw new NotFoundException(`Account ${accNumber} not found`);
+      throw new NotFoundException({
+        code: 'ACCOUNT_NOT_FOUND',
+        message: `Account ${accNumber} not found`,
+      });
     }
     if (dto.vbCode && dto.vbCode.trim() !== account.vbCode.trim()) {
-      throw new BadRequestException('vbCode does not match this account');
+      throw new BadRequestException({
+        code: 'VB_MISMATCH',
+        message: 'vbCode does not match this account',
+      });
     }
 
     // Block payment for accounts on loss status (status_id = '4').
     if (account.statusId?.trim() === '4') {
-      throw new BadRequestException('Account is inactive (loss status) — payment not allowed.');
+      throw new BadRequestException({
+        code: 'LOSS_STATUS',
+        message: 'Account is inactive (loss status) — payment not allowed.',
+      });
     }
 
     // ── 1b. Check-in / check-out guards via vbc_arrangement ───────────────────
@@ -301,7 +310,10 @@ export class VillageDataService {
       },
     });
     if (alreadyOut) {
-      throw new BadRequestException('Already checked out today. Must check in again.');
+      throw new BadRequestException({
+        code: 'ALREADY_CHECKED_OUT',
+        message: 'Already checked out today. Must check in again.',
+      });
     }
 
     // Require a valid check-in today before allowing payment.
@@ -316,14 +328,18 @@ export class VillageDataService {
       },
     });
     if (!checkedInRow) {
-      throw new BadRequestException('Must check in before withdrawing.');
+      throw new BadRequestException({
+        code: 'MUST_CHECK_IN_FIRST',
+        message: 'Must check in before withdrawing.',
+      });
     }
 
     const amount = BigInt(dto.amount);
     if (account.currentBalance < amount) {
-      throw new BadRequestException(
-        `Insufficient savings balance (have ${account.currentBalance}, need ${amount})`,
-      );
+      throw new BadRequestException({
+        code: 'INSUFFICIENT_BALANCE',
+        message: `Insufficient savings balance (have ${account.currentBalance}, need ${amount})`,
+      });
     }
 
     // ── 2. Resolve optional dependencies ─────────────────────────────────────
@@ -470,14 +486,25 @@ export class VillageDataService {
       where: { accNumber },
       select: { accNumber: true, vbCode: true, bankbookNumber: true, statusId: true },
     });
-    if (!account) throw new NotFoundException(`Account ${accNumber} not found`);
+    if (!account) {
+      throw new NotFoundException({
+        code: 'ACCOUNT_NOT_FOUND',
+        message: `Account ${accNumber} not found`,
+      });
+    }
     if (dto.vbCode && dto.vbCode.trim() !== account.vbCode.trim()) {
-      throw new ForbiddenException('vbCode does not match this account');
+      throw new ForbiddenException({
+        code: 'VB_MISMATCH',
+        message: 'vbCode does not match this account',
+      });
     }
 
     // Guard: account is on loss status (status_id = '4') — no check-in/out allowed.
     if (account.statusId?.trim() === '4') {
-      throw new BadRequestException('Account is inactive (loss status) — check-in not allowed.');
+      throw new BadRequestException({
+        code: 'LOSS_STATUS',
+        message: 'Account is inactive (loss status) — check-in not allowed.',
+      });
     }
 
     const vbCode   = account.vbCode.trim();
@@ -499,7 +526,10 @@ export class VillageDataService {
       },
     });
     if (completedToday) {
-      throw new ConflictException('Already checked in and out today. Please check in next day.');
+      throw new ConflictException({
+        code: 'ALREADY_CHECKED_IN_OUT_TODAY',
+        message: 'Already checked in and out today. Please check in next day.',
+      });
     }
 
     // 3. Guard: already checked in today but not yet paid.
@@ -514,7 +544,10 @@ export class VillageDataService {
       },
     });
     if (existing) {
-      throw new ConflictException('Already checked in today. Must check out (pay) first.');
+      throw new ConflictException({
+        code: 'ALREADY_CHECKED_IN',
+        message: 'Already checked in today. Must check out (pay) first.',
+      });
     }
 
     // 3. Look up vbc_id from VbCommitteeTeam (optional — not all members are committee members).
