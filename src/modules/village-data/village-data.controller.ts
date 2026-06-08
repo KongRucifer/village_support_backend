@@ -13,6 +13,7 @@ import { VillageDataService } from './village-data.service.js';
 import { VbCodeQueryDto, AccountOwnerQueryDto } from './dto/vbcode-query.dto.js';
 import { UpdateSavingsDto } from './dto/update-savings.dto.js';
 import { WithdrawDto } from './dto/withdraw.dto.js';
+import { CheckInDto } from './dto/checkin.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
 @ApiTags('Village Data (offline app)')
@@ -75,6 +76,18 @@ export class VillageDataController {
     const sub: string = (req.user as any)?.bankbookNumber ?? 'unknown';
     const performingUserId = sub.startsWith('sys:') ? sub.slice(4) : sub;
     return this.villageDataService.withdraw(accNumber, dto, performingUserId);
+  }
+
+  @Post('accounts/:accNumber/checkin')
+  @ApiOperation({
+    summary: 'Check in — sets status_scan = 1. Rejected if already checked in (status_scan = 1).',
+  })
+  @ApiParam({ name: 'accNumber', description: 'Account number', example: '010100100000001' })
+  @ApiResponse({ status: 201, description: 'Checked in successfully' })
+  @ApiResponse({ status: 404, description: 'Account not found' })
+  @ApiResponse({ status: 409, description: 'Already checked in' })
+  checkIn(@Param('accNumber') accNumber: string, @Body() dto: CheckInDto) {
+    return this.villageDataService.checkIn(accNumber, dto);
   }
 
   @Get('accounts/:accNumber/withdrawals')

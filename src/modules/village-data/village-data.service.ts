@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { PaginatedResult } from '../../common/dto/pagination.dto.js';
 import {
@@ -8,6 +8,7 @@ import {
 import { VbCodeQueryDto, AccountOwnerQueryDto } from './dto/vbcode-query.dto.js';
 import { UpdateSavingsDto } from './dto/update-savings.dto.js';
 import { PaymentMethod, WithdrawDto } from './dto/withdraw.dto.js';
+import { CheckInDto } from './dto/checkin.dto.js';
 import { randomUUID } from 'crypto';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
@@ -273,6 +274,41 @@ export class VillageDataService {
       throw new BadRequestException('vbCode does not match this account');
     }
 
+    // ── 1b. Check-in / check-out guards via vbc_arrangement ───────────────────
+    const vbCode    = account.vbCode.trim();
+    const bankbook  = account.bankbookNumber?.trim() ?? null;
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd   = new Date(); todayEnd.setHours(23, 59, 59, 999);
+
+    // Block if already checked out today (points=0, need_sync='u', last_update set).
+    const alreadyOut = await this.prisma.vbc_arrangement.findFirst({
+      where: {
+        vbcode: vbCode,
+        bankbooknumber: bankbook,
+        date: { gte: todayStart, lte: todayEnd },
+        points: 0,
+        need_sync: 'u',
+        last_update: { not: null },
+      },
+    });
+    if (alreadyOut) {
+      throw new BadRequestException('Already checked out today. Must check in again.');
+    }
+
+    // Require a valid check-in today (points=1, need_sync='i').
+    const checkedInRow = await this.prisma.vbc_arrangement.findFirst({
+      where: {
+        vbcode: vbCode,
+        bankbooknumber: bankbook,
+        date: { gte: todayStart, lte: todayEnd },
+        points: 1,
+        need_sync: 'i',
+      },
+    });
+    if (!checkedInRow) {
+      throw new BadRequestException('Must check in before withdrawing.');
+    }
+
     const amount = BigInt(dto.amount);
     if (account.currentBalance < amount) {
       throw new BadRequestException(
@@ -396,6 +432,12 @@ export class VillageDataService {
       return null;
     });
 
+    // Mark check-in record as checked-out: points=0, need_sync='u', last_update=now.
+    await this.prisma.vbc_arrangement.update({
+      where: { id_vbcode: { id: checkedInRow.id, vbcode: checkedInRow.vbcode } },
+      data: { points: 0, need_sync: 'u', last_update: now },
+    });
+
     return {
       accNumber: account.accNumber.trim(),
       vbCode: account.vbCode.trim(),
@@ -405,6 +447,83 @@ export class VillageDataService {
       arrangementId,
       paymentMethod: dto.paymentMethod,
       date: now,
+    };
+  }
+
+  // ── 3f. Check-in — insert into vbc_arrangement (points=1, need_sync='i') ────
+  async checkIn(
+    accNumber: string,
+    dto: CheckInDto,
+  ): Promise<{ accNumber: string; checkedIn: boolean; date: string }> {
+    // 1. Resolve account → bankbookNumber + vbCode.
+    const account = await this.prisma.accounts.findUnique({
+      where: { accNumber },
+      select: { accNumber: true, vbCode: true, bankbookNumber: true },
+    });
+    if (!account) throw new NotFoundException(`Account ${accNumber} not found`);
+    if (dto.vbCode && dto.vbCode.trim() !== account.vbCode.trim()) {
+      throw new ForbiddenException('vbCode does not match this account');
+    }
+
+    const vbCode   = account.vbCode.trim();
+    const bankbook = account.bankbookNumber?.trim() ?? null;
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd   = new Date(); todayEnd.setHours(23, 59, 59, 999);
+
+    // 2. Guard: already checked in today (points=1, need_sync='i').
+    const existing = await this.prisma.vbc_arrangement.findFirst({
+      where: {
+        vbcode: vbCode,
+        bankbooknumber: bankbook,
+        date: { gte: todayStart, lte: todayEnd },
+        points: 1,
+        need_sync: 'i',
+      },
+    });
+    if (existing) {
+      throw new ConflictException('Already checked in today. Must check out (pay) first.');
+    }
+
+    // 3. Look up vbc_id from VbCommitteeTeam (optional — not all members are committee members).
+    const ownerRow = await this.prisma.accountOwner.findFirst({
+      where: { accNumber: account.accNumber, vbCode: vbCode },
+      select: { clientId: true },
+    });
+    let vbcId: string | null = null;
+    if (ownerRow) {
+      const teamRow = await this.prisma.vbCommitteeTeam.findFirst({
+        where: { clientId: ownerRow.clientId, vbCode: vbCode },
+        select: { vbcId: true },
+      });
+      vbcId = teamRow?.vbcId ?? null;
+    }
+
+    // 4. Generate next id (max id for this vbcode + 1).
+    const maxRow = await this.prisma.vbc_arrangement.findFirst({
+      where: { vbcode: vbCode },
+      orderBy: { id: 'desc' },
+      select: { id: true },
+    });
+    const nextId = (maxRow?.id ?? 0) + 1;
+
+    // 5. Insert the check-in row.
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    await this.prisma.vbc_arrangement.create({
+      data: {
+        id: nextId,
+        date: today,
+        bankbooknumber: bankbook,
+        vbcode: vbCode,
+        points: 1,
+        need_sync: 'i',
+        vbc_id: vbcId,
+      },
+    });
+
+    return {
+      accNumber: account.accNumber.trim(),
+      checkedIn: true,
+      date: today.toISOString().split('T')[0],
     };
   }
 
