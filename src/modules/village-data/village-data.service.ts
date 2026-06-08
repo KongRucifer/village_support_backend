@@ -282,32 +282,37 @@ export class VillageDataService {
     // ── 1b. Check-in / check-out guards via vbc_arrangement ───────────────────
     const vbCode    = account.vbCode.trim();
     const bankbook  = account.bankbookNumber?.trim() ?? null;
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd   = new Date(); todayEnd.setHours(23, 59, 59, 999);
+    // Build exact date boundaries for today (midnight → midnight next day).
+    // Using `lt: tomorrow` (exclusive) avoids any 23:59:59.999 millisecond edge-cases.
+    const _now       = new Date();
+    const todayDate  = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
+    const tomorrowDate = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1);
 
-    // Block if already checked out today (points=0, need_sync='u', last_update set).
+    // Block if already checked out today.
+    // Required: date == today AND points == 0 AND need_sync == 'u' AND last_update is set.
     const alreadyOut = await this.prisma.vbc_arrangement.findFirst({
       where: {
-        vbcode: vbCode,
+        vbcode:       vbCode,
         bankbooknumber: bankbook,
-        date: { gte: todayStart, lte: todayEnd },
-        points: 0,
-        need_sync: 'u',
-        last_update: { not: null },
+        date:         { gte: todayDate, lt: tomorrowDate },
+        points:       0,
+        need_sync:    'u',
+        last_update:  { not: null },
       },
     });
     if (alreadyOut) {
       throw new BadRequestException('Already checked out today. Must check in again.');
     }
 
-    // Require a valid check-in today (points=1, need_sync='i').
+    // Require a valid check-in today before allowing payment.
+    // Required: date == today AND points == 1 AND need_sync == 'i'.
     const checkedInRow = await this.prisma.vbc_arrangement.findFirst({
       where: {
-        vbcode: vbCode,
+        vbcode:       vbCode,
         bankbooknumber: bankbook,
-        date: { gte: todayStart, lte: todayEnd },
-        points: 1,
-        need_sync: 'i',
+        date:         { gte: todayDate, lt: tomorrowDate },
+        points:       1,
+        need_sync:    'i',
       },
     });
     if (!checkedInRow) {
@@ -477,31 +482,35 @@ export class VillageDataService {
 
     const vbCode   = account.vbCode.trim();
     const bankbook = account.bankbookNumber?.trim() ?? null;
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd   = new Date(); todayEnd.setHours(23, 59, 59, 999);
+    // Exact date boundaries: midnight today → midnight tomorrow (exclusive upper bound).
+    const _now         = new Date();
+    const todayDate    = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
+    const tomorrowDate = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1);
 
-    // 2. Guard: already completed check-in AND check-out today (points=0, need_sync='u').
+    // 2. Guard: already completed check-in AND check-out today.
+    // Required: date == today AND points == 0 AND need_sync == 'u'.
     const completedToday = await this.prisma.vbc_arrangement.findFirst({
       where: {
-        vbcode: vbCode,
+        vbcode:       vbCode,
         bankbooknumber: bankbook,
-        date: { gte: todayStart, lte: todayEnd },
-        points: 0,
-        need_sync: 'u',
+        date:         { gte: todayDate, lt: tomorrowDate },
+        points:       0,
+        need_sync:    'u',
       },
     });
     if (completedToday) {
       throw new ConflictException('Already checked in and out today. Please check in next day.');
     }
 
-    // 3. Guard: already checked in today (points=1, need_sync='i') — not yet paid.
+    // 3. Guard: already checked in today but not yet paid.
+    // Required: date == today AND points == 1 AND need_sync == 'i'.
     const existing = await this.prisma.vbc_arrangement.findFirst({
       where: {
-        vbcode: vbCode,
+        vbcode:       vbCode,
         bankbooknumber: bankbook,
-        date: { gte: todayStart, lte: todayEnd },
-        points: 1,
-        need_sync: 'i',
+        date:         { gte: todayDate, lt: tomorrowDate },
+        points:       1,
+        need_sync:    'i',
       },
     });
     if (existing) {
@@ -530,24 +539,23 @@ export class VillageDataService {
     });
     const nextId = (maxRow?.id ?? 0) + 1;
 
-    // 5. Insert the check-in row.
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    // 5. Insert the check-in row using the same todayDate used in the guards above.
     await this.prisma.vbc_arrangement.create({
       data: {
-        id: nextId,
-        date: today,
+        id:            nextId,
+        date:          todayDate,
         bankbooknumber: bankbook,
-        vbcode: vbCode,
-        points: 1,
-        need_sync: 'i',
-        vbc_id: vbcId,
+        vbcode:        vbCode,
+        points:        1,
+        need_sync:     'i',
+        vbc_id:        vbcId,
       },
     });
 
     return {
       accNumber: account.accNumber.trim(),
       checkedIn: true,
-      date: today.toISOString().split('T')[0],
+      date: todayDate.toISOString().split('T')[0],
     };
   }
 
