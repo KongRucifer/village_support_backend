@@ -9,9 +9,11 @@ import { JwtAuthGuard } from './jwt-auth.guard.js';
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'ltsventure-village-support-secret',
-      signOptions: { expiresIn: '30m' },
+    JwtModule.registerAsync({
+      useFactory: () => ({
+        secret: process.env.JWT_SECRET || 'ltsventure-village-support-secret',
+        signOptions: { expiresIn: '30m' },
+      }),
     }),
   ],
   controllers: [AuthController],

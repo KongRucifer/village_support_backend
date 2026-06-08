@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -20,22 +20,27 @@ export interface SystemTokenResponse {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
   ) {}
 
-  /**
-   * Authenticate a system_user and return a short-lived JWT access token.
-   * Supports both bcrypt-hashed and legacy plaintext passwords.
-   */
   async loginSystemUser(dto: SystemLoginDto): Promise<SystemTokenResponse> {
-    const user = await this.prisma.systemUser.findFirst({
-      where: { userName: dto.userName },
-      include: {
-        roles: { include: { systemRole: true } },
-      },
-    });
+    let user: Awaited<ReturnType<typeof this.prisma.systemUser.findFirst>>;
+
+    try {
+      user = await this.prisma.systemUser.findFirst({
+        where: { userName: dto.userName },
+        include: {
+          roles: { include: { systemRole: true } },
+        },
+      });
+    } catch (err) {
+      this.logger.error('Database error during login', err);
+      throw new InternalServerErrorException('Database connection failed');
+    }
 
     if (!user) {
       throw new UnauthorizedException('Username is incorrect');
