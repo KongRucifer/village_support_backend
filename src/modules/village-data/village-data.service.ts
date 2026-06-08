@@ -274,6 +274,11 @@ export class VillageDataService {
       throw new BadRequestException('vbCode does not match this account');
     }
 
+    // Block payment for accounts on loss status (status_id = '4').
+    if (account.statusId?.trim() === '4') {
+      throw new BadRequestException('Account is inactive (loss status) — payment not allowed.');
+    }
+
     // ── 1b. Check-in / check-out guards via vbc_arrangement ───────────────────
     const vbCode    = account.vbCode.trim();
     const bankbook  = account.bankbookNumber?.trim() ?? null;
@@ -455,14 +460,19 @@ export class VillageDataService {
     accNumber: string,
     dto: CheckInDto,
   ): Promise<{ accNumber: string; checkedIn: boolean; date: string }> {
-    // 1. Resolve account → bankbookNumber + vbCode.
+    // 1. Resolve account → bankbookNumber + vbCode + statusId.
     const account = await this.prisma.accounts.findUnique({
       where: { accNumber },
-      select: { accNumber: true, vbCode: true, bankbookNumber: true },
+      select: { accNumber: true, vbCode: true, bankbookNumber: true, statusId: true },
     });
     if (!account) throw new NotFoundException(`Account ${accNumber} not found`);
     if (dto.vbCode && dto.vbCode.trim() !== account.vbCode.trim()) {
       throw new ForbiddenException('vbCode does not match this account');
+    }
+
+    // Guard: account is on loss status (status_id = '4') — no check-in/out allowed.
+    if (account.statusId?.trim() === '4') {
+      throw new BadRequestException('Account is inactive (loss status) — check-in not allowed.');
     }
 
     const vbCode   = account.vbCode.trim();
@@ -470,7 +480,21 @@ export class VillageDataService {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const todayEnd   = new Date(); todayEnd.setHours(23, 59, 59, 999);
 
-    // 2. Guard: already checked in today (points=1, need_sync='i').
+    // 2. Guard: already completed check-in AND check-out today (points=0, need_sync='u').
+    const completedToday = await this.prisma.vbc_arrangement.findFirst({
+      where: {
+        vbcode: vbCode,
+        bankbooknumber: bankbook,
+        date: { gte: todayStart, lte: todayEnd },
+        points: 0,
+        need_sync: 'u',
+      },
+    });
+    if (completedToday) {
+      throw new ConflictException('Already checked in and out today. Please check in next day.');
+    }
+
+    // 3. Guard: already checked in today (points=1, need_sync='i') — not yet paid.
     const existing = await this.prisma.vbc_arrangement.findFirst({
       where: {
         vbcode: vbCode,
