@@ -2080,3 +2080,5 @@ model ClientMeetingNotification {
   @@unique([notificationId, username], map: "unique_client_notification")
   @@map("client_meeting_notification")
 }
+
+
