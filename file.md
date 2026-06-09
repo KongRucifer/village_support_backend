@@ -1,0 +1,1 @@
+ໝາຍເຫດ: ຕ້ອງ flutter pub get ແລ້ວ (ຂ້ອຍ run flutter pub add workmanager ໃຫ້ແລ້ວ → workmanager 0.9.0+3). ຕ້ອງການໃຫ້ build APK ເພື່ອ test ບໍ?

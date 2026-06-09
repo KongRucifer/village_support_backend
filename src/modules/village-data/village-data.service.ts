@@ -55,6 +55,33 @@ export interface CheckinSyncItem {
   lastUpdate: string | null; // ISO timestamp
 }
 
+/** One id_document row (for offline lookup-by-document-number). */
+export interface IdDocumentSyncItem {
+  id: string;                  // BigInt id as string (stable primary key)
+  idDocumentNumber: string;
+  clientId: string;
+  vbCode: string | null;
+  documentNameLao: string | null;
+  documentNameEng: string | null;
+}
+
+/** One transaction row (tx 3101) for offline payment history. */
+export interface TransactionSyncItem {
+  id: string;
+  date: string;                 // ISO timestamp
+  bankbookNumber: string | null;
+  transactionCodeId: string;
+  txNameLao: string | null;
+  txNameEng: string | null;
+  amount: number;
+  debitAccNumber: string;
+  debitAccNameLao: string | null;
+  creditAccNumber: string;
+  description: string | null;
+  paymentMethod: string | null;
+  vbCode: string;
+}
+
 /** Format a Date as 'YYYY-MM-DD' using local components (matches the device). */
 function ymd(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -780,6 +807,14 @@ export class VillageDataService {
     vbCodes: VbCodeListItem[];
     accountOwners: AccountOwnerItem[];
     checkins: CheckinSyncItem[];
+    idDocuments: IdDocumentSyncItem[];
+    transactions: TransactionSyncItem[];
+    // Delete-aware reconciliation: the FULL set of current primary keys for the
+    // incrementally-synced master tables, so the client can prune local rows the
+    // server no longer has. Transactions are append-only (no prune list needed);
+    // vbCodes are returned in full so the client prunes against `vbCodes` itself.
+    accountOwnerKeys: string[];   // 'bankbook|accNumber|clientId'
+    idDocumentIds: string[];      // id_document primary keys (BigInt as string)
   }> {
     const serverTime = new Date().toISOString();
     const sinceDate = since ? new Date(since) : null;
@@ -787,7 +822,7 @@ export class VillageDataService {
 
     // For incremental sync we use the `synchronized` timestamp present on these
     // tables. Rows with a NULL `synchronized` are always included (never synced).
-    const ownerWhere = validSince
+    const incWhere = validSince
       ? { OR: [{ synchronized: { gte: validSince } }, { synchronized: null }] }
       : {};
 
@@ -797,7 +832,15 @@ export class VillageDataService {
     const todayStart = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
     const tomorrowStart = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1);
 
-    const [vbRows, ownerRows, checkinRows] = await Promise.all([
+    const [
+      vbRows,
+      ownerRows,
+      checkinRows,
+      idDocRows,
+      txRows,
+      ownerKeyRows,
+      idDocKeyRows,
+    ] = await Promise.all([
       this.prisma.vbCode.findMany({
         orderBy: { id: 'asc' },
         include: {
@@ -808,7 +851,7 @@ export class VillageDataService {
         },
       }),
       this.prisma.accountOwner.findMany({
-        where: ownerWhere,
+        where: incWhere,
         orderBy: [{ vbCode: 'asc' }, { bankbookNumber: 'asc' }, { accNumber: 'asc' }],
         include: {
           client: { select: { firstName: true, lastName: true, nickName: true } },
@@ -827,11 +870,46 @@ export class VillageDataService {
       this.prisma.vbc_arrangement.findMany({
         where: { date: { gte: todayStart, lt: tomorrowStart } },
       }),
+      // id_document rows (incremental) — enables offline lookup by document number.
+      this.prisma.idDocument.findMany({
+        where: { ...incWhere, idDocumentNumber: { not: null } },
+        orderBy: { id: 'asc' },
+        select: {
+          id: true,
+          idDocumentNumber: true,
+          clientId: true,
+          vbCode: true,
+          documentNameLao: true,
+          documentNameEng: true,
+        },
+      }),
+      // Payment transactions (tx 3101) — incremental, append-only history.
+      this.prisma.transactions.findMany({
+        where: { ...incWhere, transactionCodeId: SAVINGS_WITHDRAW_TX_CODE },
+        orderBy: { date: 'desc' },
+        include: {
+          transactionCode: { select: { nameLao: true, nameEng: true } },
+          debitAccount: { select: { accNameLao: true } },
+        },
+      }),
+      // Delete-aware: full key set for account_owner (lightweight projection).
+      this.prisma.accountOwner.findMany({
+        select: { bankbookNumber: true, accNumber: true, clientId: true },
+      }),
+      // Delete-aware: full id set for id_document.
+      this.prisma.idDocument.findMany({
+        where: { idDocumentNumber: { not: null } },
+        select: { id: true },
+      }),
     ]);
 
     return {
       serverTime,
       sinceApplied: validSince ? validSince.toISOString() : null,
+      accountOwnerKeys: ownerKeyRows.map(
+        (r) => `${r.bankbookNumber}|${r.accNumber}|${r.clientId}`,
+      ),
+      idDocumentIds: idDocKeyRows.map((r) => r.id.toString()),
       checkins: checkinRows.map((r) => ({
         bankbookNumber: r.bankbooknumber?.trim() ?? null,
         vbCode: r.vbcode.trim(),
@@ -839,6 +917,29 @@ export class VillageDataService {
         points: r.points,
         needSync: r.need_sync?.trim() ?? null,
         lastUpdate: r.last_update ? r.last_update.toISOString() : null,
+      })),
+      idDocuments: idDocRows.map((r) => ({
+        id: r.id.toString(),
+        idDocumentNumber: r.idDocumentNumber!.trim(),
+        clientId: r.clientId,
+        vbCode: r.vbCode?.trim() ?? null,
+        documentNameLao: r.documentNameLao ?? null,
+        documentNameEng: r.documentNameEng ?? null,
+      })),
+      transactions: txRows.map((r) => ({
+        id: r.id,
+        date: r.date.toISOString(),
+        bankbookNumber: r.bankbookNumber?.trim() ?? null,
+        transactionCodeId: r.transactionCodeId.trim(),
+        txNameLao: r.transactionCode?.nameLao ?? null,
+        txNameEng: r.transactionCode?.nameEng ?? null,
+        amount: Number(r.amount),
+        debitAccNumber: r.debitAccNumber.trim(),
+        debitAccNameLao: r.debitAccount?.accNameLao ?? null,
+        creditAccNumber: r.creditAccNumber.trim(),
+        description: r.description ?? null,
+        paymentMethod: r.paymentMethod ?? null,
+        vbCode: r.vbCode.trim(),
       })),
       vbCodes: vbRows.map((r) => ({
         vbCode: r.id,
