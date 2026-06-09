@@ -3,6 +3,7 @@ import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Reflector } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import { AppModule } from './app.module.js';
 
 // Fix BigInt serialization for JSON
@@ -14,6 +15,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(cookieParser());
+  // Gzip every response. The offline sync snapshot is large JSON (accounts +
+  // transactions) that compresses ~10x, so this keeps the full pull small enough
+  // to finish on a brief mobile connection. `threshold: 1024` skips tiny bodies.
+  app.use(compression({ threshold: 1024 }));
   app.enableCors({ origin: true, credentials: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
