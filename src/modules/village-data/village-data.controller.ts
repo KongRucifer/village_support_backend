@@ -153,4 +153,17 @@ export class VillageDataController {
   getSync(@Query('since') since?: string) {
     return this.villageDataService.getSyncSnapshot(since);
   }
+
+  @Get('sync/checkins')
+  @ApiOperation({
+    summary: "Today's check-in rows only (lightweight) — fast reconcile of vbc_arrangement",
+    description:
+      'Returns only today\'s check-in / check-out rows so the offline app can refresh ' +
+      'check-in state in well under a second, even when the full /sync snapshot is too ' +
+      'large to download on a brief connection.',
+  })
+  @ApiResponse({ status: 200, description: "Today's check-ins" })
+  getSyncCheckins() {
+    return this.villageDataService.getCheckinsToday();
+  }
 }

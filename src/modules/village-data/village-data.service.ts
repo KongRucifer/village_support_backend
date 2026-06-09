@@ -797,6 +797,39 @@ export class VillageDataService {
     return createPrismaPaginatedResponse(results, total, page, limit, 'Withdrawals fetched successfully');
   }
 
+  // ── 4z. Today's check-ins only — lightweight, fast reconcile ────────────────
+  // The full /sync snapshot bundles every transaction (large, grows over time)
+  // so on a brief connection its download can time out before the app reconciles
+  // the check-in rows. This tiny endpoint returns ONLY today's vbc_arrangement
+  // rows so the app can refresh check-in/out state in well under a second — even
+  // when the heavy snapshot can't finish. (The snapshot still returns check-ins
+  // too; this is just a fast, reliable path.)
+  async getCheckinsToday(): Promise<{
+    serverTime: string;
+    checkins: CheckinSyncItem[];
+  }> {
+    const serverTime = new Date().toISOString();
+    const _now = new Date();
+    const todayStart    = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
+    const tomorrowStart = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1);
+
+    const checkinRows = await this.prisma.vbc_arrangement.findMany({
+      where: { date: { gte: todayStart, lt: tomorrowStart } },
+    });
+
+    return {
+      serverTime,
+      checkins: checkinRows.map((r) => ({
+        bankbookNumber: r.bankbooknumber?.trim() ?? null,
+        vbCode: r.vbcode.trim(),
+        date: r.date ? ymd(r.date) : ymd(todayStart),
+        points: r.points,
+        needSync: r.need_sync?.trim() ?? null,
+        lastUpdate: r.last_update ? r.last_update.toISOString() : null,
+      })),
+    };
+  }
+
   // ── 4. Sync snapshot — full dataset for offline SQLite caching ──────────────
   // The Flutter app pulls this when online and mirrors it into SQLite so that
   // login / search / detail keep working with no internet. `since` (ISO date)
