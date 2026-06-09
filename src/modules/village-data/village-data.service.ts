@@ -463,6 +463,27 @@ export class VillageDataService {
         });
       }
 
+      // Record this payment in cash_book_view (cash-book ledger). Composite PK is
+      // (id, vbcode) with no auto-increment, so generate the next id per vbcode.
+      const cashMax = await tx.cash_book_view.findFirst({
+        where: { vbcode: account.vbCode },
+        orderBy: { id: 'desc' },
+        select: { id: true },
+      });
+      await tx.cash_book_view.create({
+        data: {
+          id:             (cashMax?.id ?? 0) + 1,
+          date:           now,                 // today
+          acc_number:     account.accNumber,
+          expenses:       amount,              // money paid out (checkout)
+          balance:        newBalance,          // balance AFTER the withdrawal
+          vbcode:         account.vbCode,
+          need_sync:      'i',
+          bankbooknumber: account.bankbookNumber,
+          description:    dto.note?.trim() || 'Savings payment',
+        },
+      });
+
       // If Bank Transfer: save recipient name + account number on the client record.
       // Must run BEFORE any early return so it always executes.
       if (
