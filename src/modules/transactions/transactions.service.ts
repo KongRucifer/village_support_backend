@@ -4,7 +4,7 @@ import { PaginationDto, PaginatedResult, createPaginatedResponse, calculatePagin
 import { getPrismaPagination } from '../../common/utils/prisma-pagination.util.js';
 
 const LOAN_TX_CODES = ['1201', '1010', '1001'];
-const SAVINGS_TX_CODES = ['1006', '3101', '6410'];
+const SAVINGS_TX_CODES = ['1006', '3101', '6410', '6607'];
 const LOAN_ACC_TYPE_ID = '5';
 const SAVINGS_ACC_TYPE_ID = '9';
 

@@ -12,8 +12,11 @@ import { CheckInDto } from './dto/checkin.dto.js';
 import { randomUUID } from 'crypto';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
-// Savings withdrawal transaction code (see TransactionsService.SAVINGS_TX_CODES).
-const SAVINGS_WITHDRAW_TX_CODE = '3101';
+// Savings withdrawal / disbursement transaction code (see TransactionsService.SAVINGS_TX_CODES).
+const SAVINGS_WITHDRAW_TX_CODE = '6607';
+
+// Fixed deposit amount added to a member's savings balance on check-in.
+const CHECK_IN_DEPOSIT = 195000;
 
 /** Shape returned for a single village bank (vbcode) row. */
 export interface VbCodeListItem {
@@ -108,15 +111,17 @@ export class VillageDataService {
     const { skip, take, page, limit } = getPrismaPagination(query.page, query.limit);
     const search = query.search?.trim();
 
-    const where = search
-      ? {
-          OR: [
-            { id: { contains: search, mode: 'insensitive' as const } },
-            { nameLao: { contains: search, mode: 'insensitive' as const } },
-            { nameEng: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {};
+    // Only real village banks: a vbcode row that HAS a matching villagebank row.
+    // (The vbcode table holds 9235 administrative codes, but only ~17 are
+    // operating village banks — those are the ones with a villageBank relation.)
+    const where: any = { villageBank: { isNot: null } };
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: 'insensitive' as const } },
+        { nameLao: { contains: search, mode: 'insensitive' as const } },
+        { nameEng: { contains: search, mode: 'insensitive' as const } },
+      ];
+    }
 
     const [rows, total] = await Promise.all([
       this.prisma.vbCode.findMany({
@@ -417,6 +422,13 @@ export class VillageDataService {
     const conditionId = existingArrangement?.clientEquitySavingConditionId ?? null;
     const arrangementStatusId = existingArrangement?.statusId ?? account.statusId;
 
+    // Default description by payment method (UNDP disbursement). An explicit
+    // note from the caller still overrides this default.
+    const paymentDescription =
+      dto.paymentMethod === PaymentMethod.BankTransfer
+        ? 'UNDP disbursement money for member by BankTransfer'
+        : 'UNDP disbursement money for member by Cash';
+
     // ── 3. Find clientId via account_owner (needed to update client record) ─────
     const ownerRow = await this.prisma.accountOwner.findFirst({
       where: { accNumber, vbCode: account.vbCode },
@@ -456,7 +468,7 @@ export class VillageDataService {
             debitAccNumber: account.accNumber,
             creditAccNumber: account.accNumber,
             vbCode: account.vbCode,
-            description: dto.note?.trim() || 'Savings payment',
+            description: dto.note?.trim() || paymentDescription,
             userId: performingUserId,   // ← actual logged-in system user ID
             paymentMethod: dto.paymentMethod,
           },
@@ -480,7 +492,7 @@ export class VillageDataService {
           vbcode:         account.vbCode,
           need_sync:      'i',
           bankbooknumber: account.bankbookNumber,
-          description:    dto.note?.trim() || 'Savings payment',
+          description:    dto.note?.trim() || paymentDescription,
         },
       });
 
@@ -545,11 +557,17 @@ export class VillageDataService {
   async checkIn(
     accNumber: string,
     dto: CheckInDto,
-  ): Promise<{ accNumber: string; checkedIn: boolean; date: string }> {
-    // 1. Resolve account → bankbookNumber + vbCode + statusId.
+  ): Promise<{ accNumber: string; checkedIn: boolean; date: string; currentBalance: number }> {
+    // 1. Resolve account → bankbookNumber + vbCode + statusId + balance.
     const account = await this.prisma.accounts.findUnique({
       where: { accNumber },
-      select: { accNumber: true, vbCode: true, bankbookNumber: true, statusId: true },
+      select: {
+        accNumber: true,
+        vbCode: true,
+        bankbookNumber: true,
+        statusId: true,
+        currentBalance: true,
+      },
     });
     if (!account) {
       throw new NotFoundException({
@@ -637,23 +655,38 @@ export class VillageDataService {
     });
     const nextId = (maxRow?.id ?? 0) + 1;
 
-    // 5. Insert the check-in row using the same todayDate used in the guards above.
-    await this.prisma.vbc_arrangement.create({
-      data: {
-        id:            nextId,
-        date:          todayDate,
-        bankbooknumber: bankbook,
-        vbcode:        vbCode,
-        points:        1,
-        need_sync:     'i',
-        vbc_id:        vbcId,
-      },
+    // 5. Atomically: insert the check-in row AND deposit the fixed amount into
+    //    the member's savings balance. The amount comes from the client (fixed
+    //    195,000) but falls back to the server default if omitted.
+    const depositAmount = BigInt(dto.amount ?? CHECK_IN_DEPOSIT);
+    const newBalance = account.currentBalance + depositAmount;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.vbc_arrangement.create({
+        data: {
+          id:            nextId,
+          date:          todayDate,
+          bankbooknumber: bankbook,
+          vbcode:        vbCode,
+          points:        1,
+          need_sync:     'i',
+          vbc_id:        vbcId,
+        },
+      });
+
+      if (depositAmount > 0n) {
+        await tx.accounts.update({
+          where: { accNumber },
+          data: { currentBalance: { increment: depositAmount }, lastUpdate: new Date() },
+        });
+      }
     });
 
     return {
       accNumber: account.accNumber.trim(),
       checkedIn: true,
       date: todayDate.toISOString().split('T')[0],
+      currentBalance: Number(newBalance),
     };
   }
 
@@ -896,6 +929,9 @@ export class VillageDataService {
       idDocKeyRows,
     ] = await Promise.all([
       this.prisma.vbCode.findMany({
+        // Only real village banks (those with a villagebank row) — matches the
+        // list endpoint and keeps the offline mirror small (17 vs 9235 rows).
+        where: { villageBank: { isNot: null } },
         orderBy: { id: 'asc' },
         include: {
           province: { select: { nameLao: true, nameEng: true } },
