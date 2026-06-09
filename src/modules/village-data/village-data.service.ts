@@ -426,7 +426,7 @@ export class VillageDataService {
     // note from the caller still overrides this default.
     const paymentDescription =
       dto.paymentMethod === PaymentMethod.BankTransfer
-        ? 'UNDP disbursement money for member by BankTransfer'
+        ? 'UNDP disbursement money for member by Bank Transfer'
         : 'UNDP disbursement money for member by Cash';
 
     // ── 3. Find clientId via account_owner (needed to update client record) ─────
@@ -471,6 +471,7 @@ export class VillageDataService {
             description: dto.note?.trim() || paymentDescription,
             userId: performingUserId,   // ← actual logged-in system user ID
             paymentMethod: dto.paymentMethod,
+            needSync: 'i',              // 'i' = inserted (needs sync upstream)
           },
         });
       }

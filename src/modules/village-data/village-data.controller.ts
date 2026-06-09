@@ -71,9 +71,11 @@ export class VillageDataController {
   @ApiResponse({ status: 400, description: 'Insufficient balance / vbCode mismatch' })
   @ApiResponse({ status: 404, description: 'Account not found' })
   withdraw(@Req() req: Request, @Param('accNumber') accNumber: string, @Body() dto: WithdrawDto) {
-    // req.user.bankbookNumber holds the JWT sub, which is 'sys:<numericId>' for system users.
+    // System-user tokens put the JWT sub on `id` ('sys:<numericId>'); client
+    // tokens use `bankbookNumber`. Prefer id, then bankbookNumber.
+    const u = req.user as any;
+    const sub: string = u?.id ?? u?.bankbookNumber ?? 'unknown';
     // Strip the 'sys:' prefix so the DB stores just the numeric ID (e.g. '2', '27').
-    const sub: string = (req.user as any)?.bankbookNumber ?? 'unknown';
     const performingUserId = sub.startsWith('sys:') ? sub.slice(4) : sub;
     return this.villageDataService.withdraw(accNumber, dto, performingUserId);
   }
