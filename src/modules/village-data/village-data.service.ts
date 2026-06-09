@@ -45,6 +45,23 @@ export interface AccountOwnerItem {
   statusId: string | null;
 }
 
+/** One check-in / check-out row from vbc_arrangement (for offline sync). */
+export interface CheckinSyncItem {
+  bankbookNumber: string | null;
+  vbCode: string;
+  date: string;           // 'YYYY-MM-DD'
+  points: number | null;  // 1 = checked in, 0 = checked out
+  needSync: string | null; // 'i' = checked in, 'u' = checked out
+  lastUpdate: string | null; // ISO timestamp
+}
+
+/** Format a Date as 'YYYY-MM-DD' using local components (matches the device). */
+function ymd(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 @Injectable()
 export class VillageDataService {
   constructor(private readonly prisma: PrismaService) {}
@@ -762,6 +779,7 @@ export class VillageDataService {
     sinceApplied: string | null;
     vbCodes: VbCodeListItem[];
     accountOwners: AccountOwnerItem[];
+    checkins: CheckinSyncItem[];
   }> {
     const serverTime = new Date().toISOString();
     const sinceDate = since ? new Date(since) : null;
@@ -773,7 +791,13 @@ export class VillageDataService {
       ? { OR: [{ synchronized: { gte: validSince } }, { synchronized: null }] }
       : {};
 
-    const [vbRows, ownerRows] = await Promise.all([
+    // Today's date boundaries (server-local) for the check-in rows. The app only
+    // needs TODAY's vbc_arrangement rows — check-in status resets each day.
+    const _now = new Date();
+    const todayStart = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
+    const tomorrowStart = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1);
+
+    const [vbRows, ownerRows, checkinRows] = await Promise.all([
       this.prisma.vbCode.findMany({
         orderBy: { id: 'asc' },
         include: {
@@ -799,11 +823,23 @@ export class VillageDataService {
           },
         },
       }),
+      // Today's check-in / check-out rows from vbc_arrangement.
+      this.prisma.vbc_arrangement.findMany({
+        where: { date: { gte: todayStart, lt: tomorrowStart } },
+      }),
     ]);
 
     return {
       serverTime,
       sinceApplied: validSince ? validSince.toISOString() : null,
+      checkins: checkinRows.map((r) => ({
+        bankbookNumber: r.bankbooknumber?.trim() ?? null,
+        vbCode: r.vbcode.trim(),
+        date: r.date ? ymd(r.date) : ymd(todayStart),
+        points: r.points,
+        needSync: r.need_sync?.trim() ?? null,
+        lastUpdate: r.last_update ? r.last_update.toISOString() : null,
+      })),
       vbCodes: vbRows.map((r) => ({
         vbCode: r.id,
         nameLao: r.nameLao,
