@@ -32,6 +32,9 @@ export interface VbCodeListItem {
   statusId: string | null;
   clientCount: number;
   accountOwnerCount: number;
+  /** Sum of this village bank's cash-account family ('110' tree) balances.
+   *  Only populated by the sync snapshot (used by the offline no-cash guard). */
+  cashBalance?: number;
 }
 
 /** Shape returned for one account owner (account_owner joined with client + account). */
@@ -85,11 +88,21 @@ export interface TransactionSyncItem {
   vbCode: string;
 }
 
-/** Format a Date as 'YYYY-MM-DD' using local components (matches the device). */
+/** Format a Date as 'YYYY-MM-DD' using UTC components.
+ *  Date-only values are stored as UTC-midnight (see [utcDateOnly]), so reading
+ *  them back with UTC getters yields the correct calendar day. */
 function ymd(d: Date): string {
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${mm}-${dd}`;
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${mm}-${dd}`;
+}
+
+/** Build a UTC-midnight Date for the LOCAL calendar day of [d].
+ *  Postgres `@db.Date` columns store the UTC date part, so using local midnight
+ *  (`new Date(y, m, d)`) shifts back one day in UTC+ timezones. Anchoring to
+ *  `Date.UTC` keeps the stored date equal to the server's local calendar day. */
+function utcDateOnly(d: Date = new Date()): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 }
 
 @Injectable()
@@ -111,10 +124,10 @@ export class VillageDataService {
     const { skip, take, page, limit } = getPrismaPagination(query.page, query.limit);
     const search = query.search?.trim();
 
-    // Only real village banks: a vbcode row that HAS a matching villagebank row.
-    // (The vbcode table holds 9235 administrative codes, but only ~17 are
-    // operating village banks — those are the ones with a villageBank relation.)
-    const where: any = { villageBank: { isNot: null } };
+    // Only ACTIVE village banks: a vbcode row whose villagebank has status_id '2'.
+    // (The vbcode table holds 9235 administrative codes; only operating banks have
+    // a villageBank relation, and of those we show only the active ones.)
+    const where: any = { villageBank: { statusId: '2' } };
     if (search) {
       where.OR = [
         { id: { contains: search, mode: 'insensitive' as const } },
@@ -329,22 +342,23 @@ export class VillageDataService {
       });
     }
 
-    // Block payment for accounts on loss status (status_id = '4').
-    if (account.statusId?.trim() === '4') {
+    // Only ACTIVE accounts (status_id == '2') may be paid. Any other status
+    // (loss '4', closed, etc.) is blocked.
+    if (account.statusId?.trim() !== '2') {
       throw new BadRequestException({
-        code: 'LOSS_STATUS',
-        message: 'Account is inactive (loss status) — payment not allowed.',
+        code: 'NOT_ACTIVE',
+        message: 'Account is not active — payment not allowed.',
       });
     }
 
     // ── 1b. Check-in / check-out guards via vbc_arrangement ───────────────────
     const vbCode    = account.vbCode.trim();
     const bankbook  = account.bankbookNumber?.trim() ?? null;
-    // Build exact date boundaries for today (midnight → midnight next day).
+    // Build exact date boundaries for today (UTC-midnight → UTC-midnight next day).
     // Using `lt: tomorrow` (exclusive) avoids any 23:59:59.999 millisecond edge-cases.
     const _now       = new Date();
-    const todayDate  = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
-    const tomorrowDate = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1);
+    const todayDate  = utcDateOnly(_now);
+    const tomorrowDate = new Date(todayDate.getTime() + 86_400_000);
 
     // Block if already checked out today.
     // Required: date == today AND points == 0 AND need_sync == 'u' AND last_update is set.
@@ -391,11 +405,30 @@ export class VillageDataService {
       });
     }
 
+    // Block payment when this village bank has no cash on hand: the sum of the
+    // cash-account family ('110' tree) for this vbCode must be > 0.
+    const cashAgg = await this.prisma.$queryRaw<{ sum: bigint | null }[]>`
+      SELECT COALESCE(SUM(current_balance), 0) AS sum
+      FROM accounts
+      WHERE vbcode = ${account.vbCode}
+        AND TRIM(acc_code) IN ('110','1101','11011','110110','1101100')
+    `;
+    if ((cashAgg[0]?.sum ?? 0n) === 0n) {
+      throw new BadRequestException({
+        code: 'NO_CASH',
+        message: 'No cash available in this village bank.',
+      });
+    }
+
     // ── 2. Resolve optional dependencies ─────────────────────────────────────
     const [txCodeRow, existingArrangement] = await Promise.all([
       this.prisma.transactionCode.findUnique({
         where: { transactionCode: SAVINGS_WITHDRAW_TX_CODE },
-        select: { transactionCode: true },
+        select: {
+          transactionCode: true,
+          debitAccNumber: true,
+          creditAccNumber: true,
+        },
       }),
       // Find the most-recent equity saving arrangement for this account so we
       // can copy clientEquitySavingConditionId and statusId (both required).
@@ -417,17 +450,25 @@ export class VillageDataService {
     const txId = randomUUID();
     const newBalance = account.currentBalance - amount;
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = utcDateOnly(now);
+
+    // Debit/credit account = this village's vbCode prefixed onto the account
+    // configured on transaction_code 6607 (e.g. '1206023' + '73702000').
+    const vbPrefix = account.vbCode.trim();
+    const debitAcc =
+      vbPrefix + (txCodeRow?.debitAccNumber?.trim() || '') || account.accNumber;
+    const creditAcc =
+      vbPrefix + (txCodeRow?.creditAccNumber?.trim() || '') || account.accNumber;
 
     const conditionId = existingArrangement?.clientEquitySavingConditionId ?? null;
     const arrangementStatusId = existingArrangement?.statusId ?? account.statusId;
 
-    // Default description by payment method (UNDP disbursement). An explicit
-    // note from the caller still overrides this default.
+    // Default description by payment method (disbursement). An explicit note from
+    // the caller still overrides this default.
     const paymentDescription =
       dto.paymentMethod === PaymentMethod.BankTransfer
-        ? 'UNDP disbursement money for member by Bank Transfer'
-        : 'UNDP disbursement money for member by Cash';
+        ? 'disbursement money for member by Bank Transfer'
+        : 'disbursement money for member by Cash';
 
     // ── 3. Find clientId via account_owner (needed to update client record) ─────
     const ownerRow = await this.prisma.accountOwner.findFirst({
@@ -465,8 +506,8 @@ export class VillageDataService {
             bankbookNumber: account.bankbookNumber,
             transactionCodeId: SAVINGS_WITHDRAW_TX_CODE,
             amount,
-            debitAccNumber: account.accNumber,
-            creditAccNumber: account.accNumber,
+            debitAccNumber: debitAcc,
+            creditAccNumber: creditAcc,
             vbCode: account.vbCode,
             description: dto.note?.trim() || paymentDescription,
             userId: performingUserId,   // ← actual logged-in system user ID
@@ -593,10 +634,10 @@ export class VillageDataService {
 
     const vbCode   = account.vbCode.trim();
     const bankbook = account.bankbookNumber?.trim() ?? null;
-    // Exact date boundaries: midnight today → midnight tomorrow (exclusive upper bound).
+    // Exact date boundaries: UTC-midnight today → UTC-midnight tomorrow (exclusive).
     const _now         = new Date();
-    const todayDate    = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
-    const tomorrowDate = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1);
+    const todayDate    = utcDateOnly(_now);
+    const tomorrowDate = new Date(todayDate.getTime() + 86_400_000);
 
     // 2. Guard: already completed check-in AND check-out today.
     // Required: date == today AND points == 0 AND need_sync == 'u'.
@@ -864,9 +905,8 @@ export class VillageDataService {
     checkins: CheckinSyncItem[];
   }> {
     const serverTime = new Date().toISOString();
-    const _now = new Date();
-    const todayStart    = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
-    const tomorrowStart = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1);
+    const todayStart    = utcDateOnly();
+    const tomorrowStart = new Date(todayStart.getTime() + 86_400_000);
 
     const checkinRows = await this.prisma.vbc_arrangement.findMany({
       where: { date: { gte: todayStart, lt: tomorrowStart } },
@@ -903,6 +943,10 @@ export class VillageDataService {
     // vbCodes are returned in full so the client prunes against `vbCodes` itself.
     accountOwnerKeys: string[];   // 'bankbook|accNumber|clientId'
     idDocumentIds: string[];      // id_document primary keys (BigInt as string)
+    // Account configured on transaction_code 6607 — the offline client prefixes
+    // the vbCode onto these to build debit/credit numbers for pending rows.
+    withdrawDebitBase: string;
+    withdrawCreditBase: string;
   }> {
     const serverTime = new Date().toISOString();
     const sinceDate = since ? new Date(since) : null;
@@ -917,8 +961,8 @@ export class VillageDataService {
     // Today's date boundaries (server-local) for the check-in rows. The app only
     // needs TODAY's vbc_arrangement rows — check-in status resets each day.
     const _now = new Date();
-    const todayStart = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
-    const tomorrowStart = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate() + 1);
+    const todayStart = utcDateOnly(_now);
+    const tomorrowStart = new Date(todayStart.getTime() + 86_400_000);
 
     const [
       vbRows,
@@ -928,11 +972,13 @@ export class VillageDataService {
       txRows,
       ownerKeyRows,
       idDocKeyRows,
+      withdrawTxCode,
+      cashRows,
     ] = await Promise.all([
       this.prisma.vbCode.findMany({
-        // Only real village banks (those with a villagebank row) — matches the
+        // Only ACTIVE village banks (villagebank.status_id == '2') — matches the
         // list endpoint and keeps the offline mirror small (17 vs 9235 rows).
-        where: { villageBank: { isNot: null } },
+        where: { villageBank: { statusId: '2' } },
         orderBy: { id: 'asc' },
         include: {
           province: { select: { nameLao: true, nameEng: true } },
@@ -992,7 +1038,25 @@ export class VillageDataService {
         where: { idDocumentNumber: { not: null } },
         select: { id: true },
       }),
+      // The debit/credit account base configured on the withdrawal tx code (6607).
+      this.prisma.transactionCode.findUnique({
+        where: { transactionCode: SAVINGS_WITHDRAW_TX_CODE },
+        select: { debitAccNumber: true, creditAccNumber: true },
+      }),
+      // Per-vbCode cash-on-hand: sum of the '110' account family. Lets the offline
+      // client enforce the no-cash guard without mirroring every internal account.
+      this.prisma.$queryRaw<{ vbcode: string; sum: bigint | null }[]>`
+        SELECT vbcode, COALESCE(SUM(current_balance), 0) AS sum
+        FROM accounts
+        WHERE TRIM(acc_code) IN ('110','1101','11011','110110','1101100')
+        GROUP BY vbcode
+      `,
     ]);
+
+    // Map vbCode → cash-on-hand sum for quick lookup when building vbCode items.
+    const cashByVb = new Map<string, number>(
+      cashRows.map((r) => [r.vbcode.trim(), Number(r.sum ?? 0n)]),
+    );
 
     return {
       serverTime,
@@ -1045,6 +1109,7 @@ export class VillageDataService {
         statusId: r.villageBank?.statusId ?? null,
         clientCount: r._count.clients,
         accountOwnerCount: r._count.accountOwners,
+        cashBalance: cashByVb.get(r.id.trim()) ?? 0,
       })),
       accountOwners: ownerRows.map((r) => ({
         bankbookNumber: r.bankbookNumber,
@@ -1058,6 +1123,8 @@ export class VillageDataService {
         accountType: r.account?.accountType?.nameLao ?? r.account?.accountType?.nameEng ?? null,
         statusId: r.account?.statusId ?? null,
       })),
+      withdrawDebitBase: withdrawTxCode?.debitAccNumber?.trim() ?? '',
+      withdrawCreditBase: withdrawTxCode?.creditAccNumber?.trim() ?? '',
     };
   }
 }
