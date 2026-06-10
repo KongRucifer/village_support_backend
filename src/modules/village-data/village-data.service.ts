@@ -413,7 +413,7 @@ export class VillageDataService {
       WHERE vbcode = ${account.vbCode}
         AND TRIM(acc_code) IN ('110','1101','11011','110110','1101100')
     `;
-    if ((cashAgg[0]?.sum ?? 0n) === 0n) {
+    if ((cashAgg[0]?.sum ?? 0n) <= 0n) {
       throw new BadRequestException({
         code: 'NO_CASH',
         message: 'No cash available in this village bank.',
