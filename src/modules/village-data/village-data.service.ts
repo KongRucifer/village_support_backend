@@ -555,6 +555,7 @@ export class VillageDataService {
       }
 
       // If a clientEquitySavingConditionId exists: insert the arrangement row.
+      let arrId: number | null = null;
       if (conditionId !== null) {
         const arr = await tx.clientEquitySavingArrangement.create({
           data: {
@@ -571,16 +572,18 @@ export class VillageDataService {
           },
           select: { id: true },
         });
-        return Number(arr.id);
+        arrId = Number(arr.id);
       }
 
-      return null;
-    });
+      // Mark the check-in record as checked-out: points=0, need_sync='u'.
+      // Done INSIDE the transaction so if it fails the whole payment (balance,
+      // cash decrement, transaction, cash-book, arrangement) rolls back.
+      await tx.vbc_arrangement.update({
+        where: { id_vbcode: { id: checkedInRow.id, vbcode: checkedInRow.vbcode } },
+        data: { points: 0, need_sync: 'u', last_update: now },
+      });
 
-    // Mark check-in record as checked-out: points=0, need_sync='u', last_update=now.
-    await this.prisma.vbc_arrangement.update({
-      where: { id_vbcode: { id: checkedInRow.id, vbcode: checkedInRow.vbcode } },
-      data: { points: 0, need_sync: 'u', last_update: now },
+      return arrId;
     });
 
     return {
