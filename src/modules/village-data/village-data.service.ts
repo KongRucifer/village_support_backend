@@ -421,36 +421,18 @@ export class VillageDataService {
     }
 
     // ── 2. Resolve optional dependencies ─────────────────────────────────────
-    const [txCodeRow, existingArrangement] = await Promise.all([
-      this.prisma.transactionCode.findUnique({
-        where: { transactionCode: SAVINGS_WITHDRAW_TX_CODE },
-        select: {
-          transactionCode: true,
-          debitAccNumber: true,
-          creditAccNumber: true,
-        },
-      }),
-      // Find the most-recent equity saving arrangement for this account so we
-      // can copy clientEquitySavingConditionId and statusId (both required).
-      // Fall back to any arrangement on the same vbCode if the account has none.
-      this.prisma.clientEquitySavingArrangement.findFirst({
-        where: { accNumber },
-        select: { clientEquitySavingConditionId: true, statusId: true },
-        orderBy: { id: 'desc' },
-      }).then(async (row) => {
-        if (row) return row;
-        return this.prisma.clientEquitySavingArrangement.findFirst({
-          where: { vbCode: account.vbCode },
-          select: { clientEquitySavingConditionId: true, statusId: true },
-          orderBy: { id: 'desc' },
-        });
-      }),
-    ]);
+    const txCodeRow = await this.prisma.transactionCode.findUnique({
+      where: { transactionCode: SAVINGS_WITHDRAW_TX_CODE },
+      select: {
+        transactionCode: true,
+        debitAccNumber: true,
+        creditAccNumber: true,
+      },
+    });
 
     const txId = randomUUID();
     const newBalance = account.currentBalance - amount;
     const now = new Date();
-    const today = utcDateOnly(now);
 
     // Debit/credit account = this village's vbCode prefixed onto the account
     // configured on transaction_code 6607 (e.g. '1206023' + '73702000').
@@ -459,9 +441,6 @@ export class VillageDataService {
       vbPrefix + (txCodeRow?.debitAccNumber?.trim() || '') || account.accNumber;
     const creditAcc =
       vbPrefix + (txCodeRow?.creditAccNumber?.trim() || '') || account.accNumber;
-
-    const conditionId = existingArrangement?.clientEquitySavingConditionId ?? null;
-    const arrangementStatusId = existingArrangement?.statusId ?? account.statusId;
 
     // Default description by payment method (disbursement). An explicit note from
     // the caller still overrides this default.
@@ -554,25 +533,25 @@ export class VillageDataService {
         });
       }
 
-      // If a clientEquitySavingConditionId exists: insert the arrangement row.
+      // Update the LATEST equity-saving arrangement for this account+vbCode
+      // (the row with the largest date): add the paid amount to withdrawalAmount,
+      // subtract it from currentBalance, and flag it for upstream sync.
       let arrId: number | null = null;
-      if (conditionId !== null) {
-        const arr = await tx.clientEquitySavingArrangement.create({
+      const latestArr = await tx.clientEquitySavingArrangement.findFirst({
+        where: { accNumber: account.accNumber, vbCode: account.vbCode },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        select: { id: true, vbCode: true, currentBalance: true, withdrawalAmount: true },
+      });
+      if (latestArr) {
+        await tx.clientEquitySavingArrangement.update({
+          where: { id_vbCode: { id: latestArr.id, vbCode: latestArr.vbCode } },
           data: {
-            date: today,
-            accNumber: account.accNumber,
-            vbCode: account.vbCode,
-            currentBalance: newBalance,
-            savingAmount: BigInt(0),
-            withdrawalAmount: amount,
-            interestNumerator: BigInt(0),
-            clientEquitySavingConditionId: conditionId,
-            statusId: arrangementStatusId,
-            needSync: 'Y',
+            withdrawalAmount: (latestArr.withdrawalAmount ?? 0n) + amount,
+            currentBalance: latestArr.currentBalance - amount,
+            needSync: 'u',
           },
-          select: { id: true },
         });
-        arrId = Number(arr.id);
+        arrId = Number(latestArr.id);
       }
 
       // Mark the check-in record as checked-out: points=0, need_sync='u'.
@@ -723,6 +702,24 @@ export class VillageDataService {
         await tx.accounts.update({
           where: { accNumber },
           data: { currentBalance: { increment: depositAmount }, lastUpdate: new Date() },
+        });
+      }
+
+      // Update the LATEST equity-saving arrangement for this account+vbCode
+      // (the row with the largest date): add the deposit to currentBalance and
+      // flag it for upstream sync.
+      const latestArr = await tx.clientEquitySavingArrangement.findFirst({
+        where: { accNumber: account.accNumber, vbCode: vbCode },
+        orderBy: [{ date: 'desc' }, { id: 'desc' }],
+        select: { id: true, vbCode: true, currentBalance: true },
+      });
+      if (latestArr) {
+        await tx.clientEquitySavingArrangement.update({
+          where: { id_vbCode: { id: latestArr.id, vbCode: latestArr.vbCode } },
+          data: {
+            currentBalance: latestArr.currentBalance + depositAmount,
+            needSync: 'u',
+          },
         });
       }
     });
