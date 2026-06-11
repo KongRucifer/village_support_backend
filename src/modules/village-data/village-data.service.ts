@@ -49,6 +49,11 @@ export interface AccountOwnerItem {
   currentBalance: number;
   accountType: string | null;
   statusId: string | null;
+  /** Accumulated unpaid equity-saving balance (sum of all arrangement rows for
+   *  this account+vbCode). Used by the checkout "overdue" card. */
+  overduePayment?: number;
+  /** Number of unpaid check-ins (vbc_arrangement rows with need_sync = 'i'). */
+  overdueCount?: number;
 }
 
 /** One check-in / check-out row from vbc_arrangement (for offline sync). */
@@ -117,6 +122,65 @@ export class VillageDataService {
     const parts = [c.firstName, c.lastName].filter(Boolean);
     if (parts.length) return parts.join(' ');
     return c.nickName ?? '(no name)';
+  }
+
+  /** Compute the overdue summary for one account:
+   *  - overduePayment: SUM(current_balance) of every client_equity_saving_arrangement
+   *    row for this account+vbCode (the full accumulated unpaid amount).
+   *  - overdueCount:   number of vbc_arrangement rows for this member (bankbook+vbcode)
+   *    still flagged need_sync = 'i' (checked in but not yet paid out). */
+  private async overdueFor(acc: {
+    accNumber: string;
+    vbCode: string;
+    bankbookNumber: string | null;
+  }): Promise<{ overduePayment: number; overdueCount: number }> {
+    const [sumAgg, count] = await Promise.all([
+      this.prisma.clientEquitySavingArrangement.aggregate({
+        _sum: { currentBalance: true },
+        where: { accNumber: acc.accNumber, vbCode: acc.vbCode },
+      }),
+      this.prisma.vbc_arrangement.count({
+        where: {
+          vbcode: acc.vbCode.trim(),
+          bankbooknumber: acc.bankbookNumber?.trim() ?? null,
+          need_sync: 'i',
+        },
+      }),
+    ]);
+    return {
+      overduePayment: Number(sumAgg._sum.currentBalance ?? 0n),
+      overdueCount: count,
+    };
+  }
+
+  // ── 3g. Overdue payment summary for one account ─────────────────────────────
+  /** Returns the total overdue (sum of equity-saving current_balance) and the
+   *  count of unpaid check-ins. Drives the checkout screen's "overdue" card. */
+  async getOverdue(
+    accNumber: string,
+    vbCode?: string,
+  ): Promise<{ overduePayment: number; countOverduePayment: number }> {
+    const account = await this.prisma.accounts.findUnique({
+      where: { accNumber: accNumber.trim() },
+      select: { accNumber: true, vbCode: true, bankbookNumber: true },
+    });
+    if (!account) {
+      throw new NotFoundException({
+        code: 'ACCOUNT_NOT_FOUND',
+        message: `Account ${accNumber} not found`,
+      });
+    }
+    if (vbCode && vbCode.trim() !== account.vbCode.trim()) {
+      throw new BadRequestException({
+        code: 'VB_MISMATCH',
+        message: 'vbCode does not match this account',
+      });
+    }
+    const { overduePayment, overdueCount } = await this.overdueFor(account);
+    // Return the BACKLOG count (excludes the current period): one less than the
+    // raw number of unpaid check-ins, floored at 0. The client hides the overdue
+    // UI when this is <= 0.
+    return { overduePayment, countOverduePayment: Math.max(0, overdueCount - 1) };
   }
 
   // ── 1. VbCode list — paginated + search by code / name ──────────────────────
@@ -533,21 +597,29 @@ export class VillageDataService {
         });
       }
 
-      // Update the LATEST equity-saving arrangement for this account+vbCode
-      // (the row with the largest date): add the paid amount to withdrawalAmount,
-      // subtract it from currentBalance, and flag it for upstream sync.
+      // Pay off the FULL overdue balance. Zero the current_balance of EVERY
+      // arrangement row for this account+vbCode (the client sends the overdue
+      // total as dto.amount, which equals the sum of these balances). Do NOT
+      // touch withdrawal_amount on every row.
       let arrId: number | null = null;
       const latestArr = await tx.clientEquitySavingArrangement.findFirst({
         where: { accNumber: account.accNumber, vbCode: account.vbCode },
         orderBy: [{ date: 'desc' }, { id: 'desc' }],
-        select: { id: true, vbCode: true, currentBalance: true, withdrawalAmount: true },
+        select: { id: true, vbCode: true, withdrawalAmount: true },
       });
+      await tx.$executeRaw`
+        UPDATE client_equity_saving_arrangement
+        SET current_balance = 0,
+            need_sync        = 'u'
+        WHERE TRIM(acc_number) = ${account.accNumber.trim()}
+          AND TRIM(vbcode)     = ${account.vbCode.trim()}
+      `;
+      // Record the paid amount in withdrawal_amount on the LATEST-date row ONLY.
       if (latestArr) {
         await tx.clientEquitySavingArrangement.update({
           where: { id_vbCode: { id: latestArr.id, vbCode: latestArr.vbCode } },
           data: {
             withdrawalAmount: (latestArr.withdrawalAmount ?? 0n) + amount,
-            currentBalance: latestArr.currentBalance - amount,
             needSync: 'u',
           },
         });
@@ -603,14 +675,6 @@ export class VillageDataService {
       throw new ForbiddenException({
         code: 'VB_MISMATCH',
         message: 'vbCode does not match this account',
-      });
-    }
-
-    // Guard: account is on loss status (status_id = '4') — no check-in/out allowed.
-    if (account.statusId?.trim() === '4') {
-      throw new BadRequestException({
-        code: 'LOSS_STATUS',
-        message: 'Account is inactive (loss status) — check-in not allowed.',
       });
     }
 
@@ -763,6 +827,12 @@ export class VillageDataService {
     });
     if (!owner) return null;
 
+    const overdue = await this.overdueFor({
+      accNumber: owner.accNumber,
+      vbCode: owner.vbCode,
+      bankbookNumber: owner.bankbookNumber,
+    });
+
     return {
       bankbookNumber: owner.bankbookNumber,
       accNumber: owner.accNumber,
@@ -777,6 +847,8 @@ export class VillageDataService {
         owner.account?.accountType?.nameEng ??
         null,
       statusId: owner.account?.statusId ?? null,
+      overduePayment: overdue.overduePayment,
+      overdueCount: overdue.overdueCount,
     };
   }
 
@@ -826,6 +898,12 @@ export class VillageDataService {
 
     if (!owner) return null;
 
+    const overdue = await this.overdueFor({
+      accNumber: owner.accNumber,
+      vbCode: owner.vbCode,
+      bankbookNumber: owner.bankbookNumber,
+    });
+
     return {
       bankbookNumber: owner.bankbookNumber,
       accNumber: owner.accNumber,
@@ -840,6 +918,8 @@ export class VillageDataService {
         owner.account?.accountType?.nameEng ??
         null,
       statusId: owner.account?.statusId ?? null,
+      overduePayment: overdue.overduePayment,
+      overdueCount: overdue.overdueCount,
     };
   }
 
@@ -974,6 +1054,8 @@ export class VillageDataService {
       idDocKeyRows,
       withdrawTxCode,
       cashRows,
+      overdueSumRows,
+      overdueCntRows,
     ] = await Promise.all([
       this.prisma.vbCode.findMany({
         // Only ACTIVE village banks (villagebank.status_id == '2') — matches the
@@ -1051,11 +1133,40 @@ export class VillageDataService {
         WHERE TRIM(acc_code) IN ('110','1101','11011','110110','1101100')
         GROUP BY vbcode
       `,
+      // Per-account overdue total: SUM(current_balance) of the equity-saving
+      // arrangement, so the offline client can show the checkout "overdue" card.
+      this.prisma.$queryRaw<{ acc_number: string; vbcode: string; sum: bigint | null }[]>`
+        SELECT acc_number, vbcode, COALESCE(SUM(current_balance), 0) AS sum
+        FROM client_equity_saving_arrangement
+        GROUP BY acc_number, vbcode
+      `,
+      // Per-member count of unpaid check-ins (vbc_arrangement need_sync = 'i').
+      this.prisma.$queryRaw<{ bankbooknumber: string | null; vbcode: string; cnt: bigint }[]>`
+        SELECT bankbooknumber, vbcode, COUNT(*) AS cnt
+        FROM vbc_arrangement
+        WHERE need_sync = 'i'
+        GROUP BY bankbooknumber, vbcode
+      `,
     ]);
 
     // Map vbCode → cash-on-hand sum for quick lookup when building vbCode items.
     const cashByVb = new Map<string, number>(
       cashRows.map((r) => [r.vbcode.trim(), Number(r.sum ?? 0n)]),
+    );
+
+    // Per-account overdue total ('accNumber|vbCode' → sum) and per-member unpaid
+    // check-in count ('bankbook|vbCode' → count), attached to each account owner.
+    const overdueByAcc = new Map<string, number>(
+      overdueSumRows.map((r) => [
+        `${r.acc_number.trim()}|${r.vbcode.trim()}`,
+        Number(r.sum ?? 0n),
+      ]),
+    );
+    const overdueCntByMember = new Map<string, number>(
+      overdueCntRows.map((r) => [
+        `${(r.bankbooknumber ?? '').trim()}|${r.vbcode.trim()}`,
+        Number(r.cnt),
+      ]),
     );
 
     return {
@@ -1122,6 +1233,12 @@ export class VillageDataService {
         currentBalance: r.account ? Number(r.account.currentBalance) : 0,
         accountType: r.account?.accountType?.nameLao ?? r.account?.accountType?.nameEng ?? null,
         statusId: r.account?.statusId ?? null,
+        overduePayment:
+          overdueByAcc.get(`${r.accNumber.trim()}|${r.vbCode.trim()}`) ?? 0,
+        overdueCount:
+          overdueCntByMember.get(
+            `${(r.bankbookNumber ?? '').trim()}|${r.vbCode.trim()}`,
+          ) ?? 0,
       })),
       withdrawDebitBase: withdrawTxCode?.debitAccNumber?.trim() ?? '',
       withdrawCreditBase: withdrawTxCode?.creditAccNumber?.trim() ?? '',

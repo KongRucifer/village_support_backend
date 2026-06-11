@@ -92,6 +92,18 @@ export class VillageDataController {
     return this.villageDataService.checkIn(accNumber, dto);
   }
 
+  @Get('accounts/:accNumber/overdue')
+  @ApiOperation({
+    summary: 'Overdue payment summary — total accumulated unpaid equity-saving balance and the number of unpaid check-ins',
+  })
+  @ApiParam({ name: 'accNumber', description: 'Account number', example: '010100100000001' })
+  @ApiQuery({ name: 'vbCode', required: false, description: 'Optional vbCode ownership guard' })
+  @ApiResponse({ status: 200, description: 'Overdue summary' })
+  @ApiResponse({ status: 404, description: 'Account not found' })
+  getOverdue(@Param('accNumber') accNumber: string, @Query('vbCode') vbCode?: string) {
+    return this.villageDataService.getOverdue(accNumber, vbCode);
+  }
+
   @Get('accounts/:accNumber/withdrawals')
   @ApiOperation({ summary: 'List withdrawal transactions (only tx code 3101) for an account' })
   @ApiParam({ name: 'accNumber', description: 'Account number', example: '010100100000001' })
