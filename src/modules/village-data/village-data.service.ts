@@ -626,11 +626,18 @@ export class VillageDataService {
         arrId = Number(latestArr.id);
       }
 
-      // Mark the check-in record as checked-out: points=0, need_sync='u'.
+      // Mark today's check-in record as checked-out: points=0, need_sync='u'.
       // Done INSIDE the transaction so if it fails the whole payment (balance,
       // cash decrement, transaction, cash-book, arrangement) rolls back.
       await tx.vbc_arrangement.update({
         where: { id_vbcode: { id: checkedInRow.id, vbcode: checkedInRow.vbcode } },
+        data: { points: 0, need_sync: 'u', last_update: now },
+      });
+
+      // The full overdue total was disbursed, so mark EVERY remaining unpaid
+      // check-in for this member (need_sync='i', any day) as checked-out too.
+      await tx.vbc_arrangement.updateMany({
+        where: { vbcode: vbCode, bankbooknumber: bankbook, need_sync: 'i' },
         data: { points: 0, need_sync: 'u', last_update: now },
       });
 
