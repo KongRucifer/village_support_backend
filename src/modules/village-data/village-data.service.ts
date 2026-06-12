@@ -814,20 +814,24 @@ export class VillageDataService {
     const trimmed = accNumber.trim();
     if (!trimmed) return null;
 
-    // 1. Get vbCode + bankbookNumber from the accounts table.
-    //    When the scanned QR carries a qr_version, the account must match BOTH
-    //    the account number and the version — an outdated/wrong QR returns null
-    //    here, which the caller surfaces as the usual "account not found".
+    // qr_version is MANDATORY. A scan without a valid version must not match —
+    // the caller turns this null into the usual "account not found".
+    if (qrVersion == null) {
+      this.logger.warn(
+        `[findByAccNumber] acc="${trimmed}" → REJECTED (no qr_version supplied)`,
+      );
+      return null;
+    }
+
+    // 1. Get vbCode + bankbookNumber from the accounts table — the account must
+    //    match BOTH the account number AND the qr_version. An outdated/wrong QR
+    //    returns null here (surfaced as "account not found").
     const account = await this.prisma.accounts.findFirst({
-      where: {
-        accNumber: trimmed,
-        ...(qrVersion != null ? { qrVersion } : {}),
-      },
+      where: { accNumber: trimmed, qrVersion },
       select: { accNumber: true, vbCode: true, bankbookNumber: true },
     });
-    // Log whether a qr_version was supplied and whether the account matched.
     this.logger.log(
-      `[findByAccNumber] acc="${trimmed}" qrVersion=${qrVersion ?? '(none)'} ` +
+      `[findByAccNumber] acc="${trimmed}" qrVersion=${qrVersion} ` +
         `→ ${account ? 'MATCHED' : 'NOT FOUND'}`,
     );
     if (!account) return null;
@@ -880,16 +884,30 @@ export class VillageDataService {
   async findByDocumentId(
     idNumber: string,
     vbCode?: string,
+    fambookIndivNumber?: string,
+    qrVersion?: number,
   ): Promise<AccountOwnerItem | null> {
     const trimmed = idNumber.trim();
     if (!trimmed) return null;
+    const fambook = fambookIndivNumber?.trim();
+
+    // qr_version is REQUIRED for the document lookup (same rule as the QR scan).
+    // fambook_indiv_number stays optional.
+    if (qrVersion == null) {
+      this.logger.warn(
+        `[findByDocumentId] idNumber="${trimmed}" → REJECTED (no qr_version supplied)`,
+      );
+      return null;
+    }
 
     // 1. Search id_document by idDocumentNumber (mapped to "iddocmentnumber" column).
-    //    Also filter by vbCode when provided so the result is scoped to this village.
+    //    Also filter by vbCode and (optionally) fambook_indiv_number when provided
+    //    so the result is scoped more precisely.
     const doc = await this.prisma.idDocument.findFirst({
       where: {
         idDocumentNumber: trimmed,
         ...(vbCode?.trim() ? { vbCode: vbCode.trim() } : {}),
+        ...(fambook ? { fambookIndivNumber: fambook } : {}),
       },
       select: { clientId: true, vbCode: true },
       orderBy: { id: 'desc' },
@@ -897,12 +915,14 @@ export class VillageDataService {
 
     if (!doc) return null;
 
-    // 2. Find the account_owner row for this client.
+    // 2. Find the account_owner row for this client. When a qr_version is given,
+    //    the linked account must match it too (optional extra filter).
     const effectiveVbCode = vbCode?.trim() || doc.vbCode?.trim();
     const owner = await this.prisma.accountOwner.findFirst({
       where: {
         clientId: doc.clientId,
         ...(effectiveVbCode ? { vbCode: effectiveVbCode } : {}),
+        ...(qrVersion != null ? { account: { qrVersion } } : {}),
       },
       include: {
         client: { select: { firstName: true, lastName: true, nickName: true } },

@@ -153,13 +153,24 @@ export class VillageDataController {
   })
   @ApiQuery({ name: 'idNumber', required: true, description: 'ID document number (iddocmentnumber column)' })
   @ApiQuery({ name: 'vbCode', required: false, description: 'Optional village-bank code to narrow the search' })
+  @ApiQuery({ name: 'fambookIndivNumber', required: false, description: 'Optional family-book individual number filter (id_document.fambook_indiv_number)' })
+  @ApiQuery({ name: 'qrVersion', required: false, description: 'Optional qr_version filter — the matched account must have this version' })
   @ApiResponse({ status: 200, description: 'Account owner found' })
   @ApiResponse({ status: 404, description: 'No document / no account owner found' })
   async findByDocumentId(
     @Query('idNumber') idNumber: string,
     @Query('vbCode') vbCode?: string,
+    @Query('fambookIndivNumber') fambookIndivNumber?: string,
+    @Query('qrVersion') qrVersion?: string,
   ) {
-    const result = await this.villageDataService.findByDocumentId(idNumber, vbCode);
+    const parsed = qrVersion != null && qrVersion.trim() !== '' ? Number(qrVersion) : undefined;
+    const ver = parsed != null && !Number.isNaN(parsed) ? parsed : undefined;
+    const result = await this.villageDataService.findByDocumentId(
+      idNumber,
+      vbCode,
+      fambookIndivNumber,
+      ver,
+    );
     if (!result) {
       throw new (await import('@nestjs/common').then(m => m.NotFoundException))(
         `No account owner found for document "${idNumber}"`,
