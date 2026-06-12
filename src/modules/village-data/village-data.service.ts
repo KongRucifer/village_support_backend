@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { PaginatedResult } from '../../common/dto/pagination.dto.js';
 import {
@@ -112,6 +112,8 @@ function utcDateOnly(d: Date = new Date()): Date {
 
 @Injectable()
 export class VillageDataService {
+  private readonly logger = new Logger(VillageDataService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   private fullName(c: {
@@ -805,15 +807,29 @@ export class VillageDataService {
 
   // ── 3e2. Find account owner by account number ────────────────────────────────
   // The QR only carries accNumber; this resolves vbCode + bankbookNumber from the DB.
-  async findByAccNumber(accNumber: string): Promise<AccountOwnerItem | null> {
+  async findByAccNumber(
+    accNumber: string,
+    qrVersion?: number,
+  ): Promise<AccountOwnerItem | null> {
     const trimmed = accNumber.trim();
     if (!trimmed) return null;
 
     // 1. Get vbCode + bankbookNumber from the accounts table.
-    const account = await this.prisma.accounts.findUnique({
-      where: { accNumber: trimmed },
+    //    When the scanned QR carries a qr_version, the account must match BOTH
+    //    the account number and the version — an outdated/wrong QR returns null
+    //    here, which the caller surfaces as the usual "account not found".
+    const account = await this.prisma.accounts.findFirst({
+      where: {
+        accNumber: trimmed,
+        ...(qrVersion != null ? { qrVersion } : {}),
+      },
       select: { accNumber: true, vbCode: true, bankbookNumber: true },
     });
+    // Log whether a qr_version was supplied and whether the account matched.
+    this.logger.log(
+      `[findByAccNumber] acc="${trimmed}" qrVersion=${qrVersion ?? '(none)'} ` +
+        `→ ${account ? 'MATCHED' : 'NOT FOUND'}`,
+    );
     if (!account) return null;
 
     // 2. Find the matching account_owner row (carries the client relation).

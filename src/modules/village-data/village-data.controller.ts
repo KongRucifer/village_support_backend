@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   ApiBearerAuth,
@@ -21,6 +21,8 @@ import { PaginationDto } from '../../common/dto/pagination.dto.js';
 @UseGuards(JwtAuthGuard)
 @Controller('village-data')
 export class VillageDataController {
+  private readonly logger = new Logger(VillageDataController.name);
+
   constructor(private readonly villageDataService: VillageDataService) {}
 
   @Get('vbcodes')
@@ -118,10 +120,21 @@ export class VillageDataController {
     description: 'The QR code only needs to carry the accNumber. The backend looks up vbCode and bankbookNumber from the accounts table.',
   })
   @ApiQuery({ name: 'accNumber', required: true, description: 'Account number (15 chars)' })
+  @ApiQuery({ name: 'qrVersion', required: false, description: 'QR version (digits after the 15-char account number). When provided, the account must match this version too.' })
   @ApiResponse({ status: 200, description: 'Account owner found' })
   @ApiResponse({ status: 404, description: 'Account or owner not found' })
-  async findByAccNumber(@Query('accNumber') accNumber: string) {
-    const result = await this.villageDataService.findByAccNumber(accNumber);
+  async findByAccNumber(
+    @Query('accNumber') accNumber: string,
+    @Query('qrVersion') qrVersion?: string,
+  ) {
+    const parsed = qrVersion != null && qrVersion.trim() !== '' ? Number(qrVersion) : undefined;
+    const ver = parsed != null && !Number.isNaN(parsed) ? parsed : undefined;
+    // Log so we can confirm the scanned QR actually carried a qr_version.
+    this.logger.log(
+      `[find-by-account] accNumber="${accNumber}" qrVersionRaw="${qrVersion ?? ''}" ` +
+        `→ qrVersion=${ver ?? '(NOT SENT)'}`,
+    );
+    const result = await this.villageDataService.findByAccNumber(accNumber, ver);
     if (!result) {
       throw new (await import('@nestjs/common').then(m => m.NotFoundException))(
         `No account owner found for account "${accNumber}"`,

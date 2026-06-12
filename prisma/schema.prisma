@@ -538,6 +538,7 @@ model Accounts {
   balancePosition                                       String?                         @map("balanceposition") @db.Char(6)
   needSync                                              String?                         @map("need_sync") @db.Char(1)
   restructuringLoan                                     Boolean?                        @map("restructuring_loan")
+  qrVersion                                             Int?                            @map("qr_version")
   accountOwners                                         AccountOwner[]
   accountType                                           AccountType?                    @relation(fields: [accTypeId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "FK_1068")
   vb                                                    VbCode                          @relation(fields: [vbCode], references: [id], onUpdate: Restrict, map: "FK_1522")
@@ -561,7 +562,7 @@ model Accounts {
   vb_asset_arrangement                                  VbAssetArrangement[]
   vb_committeeteam                                      VbCommitteeTeam[]
   vb_nso_saving_arrangement                             VbNsoSavingArrangement[]
-
+ 
   @@index([accTypeId], map: "fkIdx_1068")
   @@index([vbCode], map: "fkIdx_1522")
   @@index([statusId], map: "fkIdx_1577")
