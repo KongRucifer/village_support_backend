@@ -82,29 +82,52 @@ export class VillageDataController {
     return this.villageDataService.withdraw(accNumber, dto, performingUserId);
   }
 
-  @Post('accounts/:accNumber/checkin')
+  // ── Check-in endpoint DISABLED ───────────────────────────────────────────
+  // Check-in is no longer used by the ADB Cash Out app. The route is commented
+  // out (not deleted) so it can be restored later if needed. The service method
+  // `checkIn()` is likewise commented out in village-data.service.ts.
+  //
+  // @Post('accounts/:accNumber/checkin')
+  // @ApiOperation({
+  //   summary: 'Check in — sets status_scan = 1. Rejected if already checked in (status_scan = 1).',
+  // })
+  // @ApiParam({ name: 'accNumber', description: 'Account number', example: '010100100000001' })
+  // @ApiResponse({ status: 201, description: 'Checked in successfully' })
+  // @ApiResponse({ status: 404, description: 'Account not found' })
+  // @ApiResponse({ status: 409, description: 'Already checked in' })
+  // checkIn(@Param('accNumber') accNumber: string, @Body() dto: CheckInDto) {
+  //   return this.villageDataService.checkIn(accNumber, dto);
+  // }
+
+  @Get('accounts/:accNumber/balance')
   @ApiOperation({
-    summary: 'Check in — sets status_scan = 1. Rejected if already checked in (status_scan = 1).',
+    summary: "Get an account's current savings balance (current_balance)",
+    description:
+      'Lightweight endpoint used by the checkout screen to show and pay out the ' +
+      "account's own real balance instead of a fixed amount.",
   })
   @ApiParam({ name: 'accNumber', description: 'Account number', example: '010100100000001' })
-  @ApiResponse({ status: 201, description: 'Checked in successfully' })
+  @ApiResponse({ status: 200, description: 'Current balance' })
   @ApiResponse({ status: 404, description: 'Account not found' })
-  @ApiResponse({ status: 409, description: 'Already checked in' })
-  checkIn(@Param('accNumber') accNumber: string, @Body() dto: CheckInDto) {
-    return this.villageDataService.checkIn(accNumber, dto);
+  getBalance(@Param('accNumber') accNumber: string) {
+    return this.villageDataService.getBalance(accNumber);
   }
 
-  @Get('accounts/:accNumber/overdue')
-  @ApiOperation({
-    summary: 'Overdue payment summary — total accumulated unpaid equity-saving balance and the number of unpaid check-ins',
-  })
-  @ApiParam({ name: 'accNumber', description: 'Account number', example: '010100100000001' })
-  @ApiQuery({ name: 'vbCode', required: false, description: 'Optional vbCode ownership guard' })
-  @ApiResponse({ status: 200, description: 'Overdue summary' })
-  @ApiResponse({ status: 404, description: 'Account not found' })
-  getOverdue(@Param('accNumber') accNumber: string, @Query('vbCode') vbCode?: string) {
-    return this.villageDataService.getOverdue(accNumber, vbCode);
-  }
+  // ── Overdue endpoint DISABLED ────────────────────────────────────────────
+  // The overdue summary is no longer used by the app. Route commented out (not
+  // deleted); the service method `getOverdue()` is likewise commented out.
+  //
+  // @Get('accounts/:accNumber/overdue')
+  // @ApiOperation({
+  //   summary: 'Overdue payment summary — total accumulated unpaid equity-saving balance and the number of unpaid check-ins',
+  // })
+  // @ApiParam({ name: 'accNumber', description: 'Account number', example: '010100100000001' })
+  // @ApiQuery({ name: 'vbCode', required: false, description: 'Optional vbCode ownership guard' })
+  // @ApiResponse({ status: 200, description: 'Overdue summary' })
+  // @ApiResponse({ status: 404, description: 'Account not found' })
+  // getOverdue(@Param('accNumber') accNumber: string, @Query('vbCode') vbCode?: string) {
+  //   return this.villageDataService.getOverdue(accNumber, vbCode);
+  // }
 
   @Get('accounts/:accNumber/withdrawals')
   @ApiOperation({ summary: 'List withdrawal transactions (only tx code 3101) for an account' })

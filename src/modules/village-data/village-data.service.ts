@@ -155,9 +155,12 @@ export class VillageDataService {
     };
   }
 
-  // ── 3g. Overdue payment summary for one account ─────────────────────────────
-  /** Returns the total overdue (sum of equity-saving current_balance) and the
-   *  count of unpaid check-ins. Drives the checkout screen's "overdue" card. */
+  // ── 3g. Overdue payment summary — DISABLED (commented out, not deleted) ─────
+  // The overdue API is no longer used by the app. The public method is kept
+  // (commented) so it can be restored with the controller route. NOTE: the
+  // private `overdueFor()` helper above is still used by the sync snapshot and
+  // find-by-account/document, so it stays active.
+  /*
   async getOverdue(
     accNumber: string,
     vbCode?: string,
@@ -184,6 +187,7 @@ export class VillageDataService {
     // UI when this is <= 0.
     return { overduePayment, countOverduePayment: Math.max(0, overdueCount - 1) };
   }
+  */
 
   // ── 1. VbCode list — paginated + search by code / name ──────────────────────
   async listVbCodes(query: VbCodeQueryDto): Promise<PaginatedResult<VbCodeListItem>> {
@@ -417,51 +421,53 @@ export class VillageDataService {
       });
     }
 
-    // ── 1b. Check-in / check-out guards via vbc_arrangement ───────────────────
-    const vbCode    = account.vbCode.trim();
-    const bankbook  = account.bankbookNumber?.trim() ?? null;
-    // Build exact date boundaries for today (UTC-midnight → UTC-midnight next day).
-    // Using `lt: tomorrow` (exclusive) avoids any 23:59:59.999 millisecond edge-cases.
-    const _now       = new Date();
-    const todayDate  = utcDateOnly(_now);
-    const tomorrowDate = new Date(todayDate.getTime() + 86_400_000);
-
-    // Block if already checked out today.
-    // Required: date == today AND points == 0 AND need_sync == 'u' AND last_update is set.
-    const alreadyOut = await this.prisma.vbc_arrangement.findFirst({
-      where: {
-        vbcode:       vbCode,
-        bankbooknumber: bankbook,
-        date:         { gte: todayDate, lt: tomorrowDate },
-        points:       0,
-        need_sync:    'u',
-        last_update:  { not: null },
-      },
-    });
-    if (alreadyOut) {
-      throw new BadRequestException({
-        code: 'ALREADY_CHECKED_OUT',
-        message: 'Already checked out today. Must check in again.',
-      });
-    }
-
-    // Require a valid check-in today before allowing payment.
-    // Required: date == today AND points == 1 AND need_sync == 'i'.
-    const checkedInRow = await this.prisma.vbc_arrangement.findFirst({
-      where: {
-        vbcode:       vbCode,
-        bankbooknumber: bankbook,
-        date:         { gte: todayDate, lt: tomorrowDate },
-        points:       1,
-        need_sync:    'i',
-      },
-    });
-    if (!checkedInRow) {
-      throw new BadRequestException({
-        code: 'MUST_CHECK_IN_FIRST',
-        message: 'Must check in before withdrawing.',
-      });
-    }
+    // ── 1b. Check-in / check-out guards DISABLED ──────────────────────────────
+    // Checkout no longer depends on a prior check-in, and no longer writes to the
+    // vbc_arrangement table at all. The guards (ALREADY_CHECKED_OUT /
+    // MUST_CHECK_IN_FIRST) and the vbCode/bankbook locals they used are commented
+    // out — not deleted — so they can be restored if check-in is re-enabled.
+    // const vbCode    = account.vbCode.trim();
+    // const bankbook  = account.bankbookNumber?.trim() ?? null;
+    //
+    // // Build exact date boundaries for today (UTC-midnight → UTC-midnight next day).
+    // const _now       = new Date();
+    // const todayDate  = utcDateOnly(_now);
+    // const tomorrowDate = new Date(todayDate.getTime() + 86_400_000);
+    //
+    // // Block if already checked out today.
+    // const alreadyOut = await this.prisma.vbc_arrangement.findFirst({
+    //   where: {
+    //     vbcode:       vbCode,
+    //     bankbooknumber: bankbook,
+    //     date:         { gte: todayDate, lt: tomorrowDate },
+    //     points:       0,
+    //     need_sync:    'u',
+    //     last_update:  { not: null },
+    //   },
+    // });
+    // if (alreadyOut) {
+    //   throw new BadRequestException({
+    //     code: 'ALREADY_CHECKED_OUT',
+    //     message: 'Already checked out today. Must check in again.',
+    //   });
+    // }
+    //
+    // // Require a valid check-in today before allowing payment.
+    // const checkedInRow = await this.prisma.vbc_arrangement.findFirst({
+    //   where: {
+    //     vbcode:       vbCode,
+    //     bankbooknumber: bankbook,
+    //     date:         { gte: todayDate, lt: tomorrowDate },
+    //     points:       1,
+    //     need_sync:    'i',
+    //   },
+    // });
+    // if (!checkedInRow) {
+    //   throw new BadRequestException({
+    //     code: 'MUST_CHECK_IN_FIRST',
+    //     message: 'Must check in before withdrawing.',
+    //   });
+    // }
 
     const amount = BigInt(dto.amount);
     if (account.currentBalance < amount) {
@@ -628,20 +634,15 @@ export class VillageDataService {
         arrId = Number(latestArr.id);
       }
 
-      // Mark today's check-in record as checked-out: points=0, need_sync='u'.
-      // Done INSIDE the transaction so if it fails the whole payment (balance,
-      // cash decrement, transaction, cash-book, arrangement) rolls back.
-      await tx.vbc_arrangement.update({
-        where: { id_vbcode: { id: checkedInRow.id, vbcode: checkedInRow.vbcode } },
-        data: { points: 0, need_sync: 'u', last_update: now },
-      });
-
-      // The full overdue total was disbursed, so mark EVERY remaining unpaid
-      // check-in for this member (need_sync='i', any day) as checked-out too.
-      await tx.vbc_arrangement.updateMany({
-        where: { vbcode: vbCode, bankbooknumber: bankbook, need_sync: 'i' },
-        data: { points: 0, need_sync: 'u', last_update: now },
-      });
+      // ── vbc_arrangement write DISABLED (commented out, not deleted) ─────────
+      // We no longer touch the vbc_arrangement table on checkout (check-in is
+      // gone). The updateMany that used to mark leftover unpaid check-ins as
+      // checked-out is commented out below so it can be restored if needed.
+      //
+      // await tx.vbc_arrangement.updateMany({
+      //   where: { vbcode: vbCode, bankbooknumber: bankbook, need_sync: 'i' },
+      //   data: { points: 0, need_sync: 'u', last_update: now },
+      // });
 
       return arrId;
     });
@@ -658,7 +659,10 @@ export class VillageDataService {
     };
   }
 
-  // ── 3f. Check-in — insert into vbc_arrangement (points=1, need_sync='i') ────
+  // ── 3f. Check-in — DISABLED (commented out, not deleted) ────────────────────
+  // Check-in is no longer used by the ADB Cash Out app. The whole method is
+  // kept (commented) so it can be restored together with the controller route.
+  /*
   async checkIn(
     accNumber: string,
     dto: CheckInDto,
@@ -802,6 +806,30 @@ export class VillageDataService {
       checkedIn: true,
       date: todayDate.toISOString().split('T')[0],
       currentBalance: Number(newBalance),
+    };
+  }
+  */
+
+  // ── 3f2. Get an account's current balance (checkout cash-out flow) ──────────
+  // Returns the account's own real savings balance so the app can display it and
+  // pay it out, instead of a fixed amount.
+  async getBalance(
+    accNumber: string,
+  ): Promise<{ accNumber: string; vbCode: string; currentBalance: number }> {
+    const account = await this.prisma.accounts.findUnique({
+      where: { accNumber },
+      select: { accNumber: true, vbCode: true, currentBalance: true },
+    });
+    if (!account) {
+      throw new NotFoundException({
+        code: 'ACCOUNT_NOT_FOUND',
+        message: `Account ${accNumber} not found`,
+      });
+    }
+    return {
+      accNumber: account.accNumber.trim(),
+      vbCode: account.vbCode.trim(),
+      currentBalance: Number(account.currentBalance),
     };
   }
 
