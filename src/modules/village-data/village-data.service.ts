@@ -592,15 +592,18 @@ export class VillageDataService {
         dto.paymentMethod === PaymentMethod.BankTransfer &&
         dto.requestAccNumber?.trim()
       ) {
-        const recipientAcc = dto.requestAccNumber.trim();
+        // Key the row on the CLIENT's own account number (from the accounts
+        // table) + vbCode. The recipient account typed in the request is stored
+        // in bank_acc_number instead.
+        const clientAcc = account.accNumber.trim();
         const key = {
-          accNumber_vbCode: { accNumber: recipientAcc, vbCode: account.vbCode },
+          accNumber_vbCode: { accNumber: clientAcc, vbCode: account.vbCode },
         };
         // The request data we want this row to hold.
         const desired = {
           accName:       dto.requestName?.trim() || null,
           bankName:      dto.bankName?.trim()     || null,
-          bankAccNumber: account.accNumber.trim(),
+          bankAccNumber: dto.requestAccNumber.trim(),  // recipient acc from request
           description:   paymentDescription,
         };
 
@@ -609,7 +612,7 @@ export class VillageDataService {
           // No row yet → insert (need_sync = 'i').
           await tx.bankAccount.create({
             data: {
-              accNumber: recipientAcc,
+              accNumber: clientAcc,
               vbCode:    account.vbCode,
               ...desired,
               statusId:  '1',          // status_id = 1 (active)
