@@ -414,6 +414,24 @@ model Client {
   @@map("client")
 }
 
+// Recipient bank-transfer details captured at checkout (Bank Transfer payment).
+// Composite PK (acc_number, vbcode). acc_number = recipient account number,
+// bank_acc_number = the source/internal account the money was paid from.
+model BankAccount {
+  accNumber     String    @map("acc_number") @db.Char(15)
+  bankAccNumber String?   @map("bank_acc_number") @db.VarChar
+  accName       String?   @map("acc_name") @db.VarChar
+  bankName      String?   @map("bank_name") @db.VarChar
+  description   String?   @db.VarChar
+  vbCode        String    @map("vbcode") @db.Char(7)
+  statusId      String?   @map("status_id") @db.Char(1)
+  needSync      String?   @map("need_sync") @db.Char(1)
+  lastUpdate    DateTime? @map("last_update") @db.Timestamp(6)
+
+  @@id([accNumber, vbCode], map: "bank_accounts_pk")
+  @@map("bank_accounts")
+}
+
 model ClientAccount {
   bankbookNumber String         @map("bankbooknumber") @db.VarChar(5)
   vbCode         String         @map("vbcode") @db.VarChar(7)

@@ -13,6 +13,7 @@ import { VillageDataService } from './village-data.service.js';
 import { VbCodeQueryDto, AccountOwnerQueryDto } from './dto/vbcode-query.dto.js';
 import { UpdateSavingsDto } from './dto/update-savings.dto.js';
 import { WithdrawDto } from './dto/withdraw.dto.js';
+import { UpdateClientRequestNameDto } from './dto/update-client-request-name.dto.js';
 import { CheckInDto } from './dto/checkin.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
@@ -111,6 +112,27 @@ export class VillageDataController {
   @ApiResponse({ status: 404, description: 'Account not found' })
   getBalance(@Param('accNumber') accNumber: string) {
     return this.villageDataService.getBalance(accNumber);
+  }
+
+  @Patch('accounts/:accNumber/client-request-name')
+  @ApiOperation({
+    summary: "Update a client's request_name from the checkout screen",
+    description:
+      'Resolves the client via account_owner and updates client.request_name. ' +
+      'Returns changed=false (no write) when the new name equals the stored one.',
+  })
+  @ApiParam({ name: 'accNumber', description: 'Account number', example: '010100100000001' })
+  @ApiResponse({ status: 200, description: 'Request name processed (changed=true|false)' })
+  @ApiResponse({ status: 404, description: 'Account or client not found' })
+  updateClientRequestName(
+    @Param('accNumber') accNumber: string,
+    @Body() dto: UpdateClientRequestNameDto,
+  ) {
+    return this.villageDataService.updateClientRequestName(
+      accNumber,
+      dto.requestName,
+      dto.vbCode,
+    );
   }
 
   // ── Overdue endpoint DISABLED ────────────────────────────────────────────

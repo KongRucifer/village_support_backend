@@ -521,12 +521,6 @@ export class VillageDataService {
         ? 'disbursement money for member by Bank Transfer'
         : 'disbursement money for member by Cash';
 
-    // ── 3. Find clientId via account_owner (needed to update client record) ─────
-    const ownerRow = await this.prisma.accountOwner.findFirst({
-      where: { accNumber, vbCode: account.vbCode },
-      select: { clientId: true },
-    });
-
     // ── 4. Execute all writes atomically (interactive transaction) ────────────
     const arrangementId = await this.prisma.$transaction(async (tx) => {
       // Always: update the savings balance.
@@ -589,20 +583,55 @@ export class VillageDataService {
         },
       });
 
-      // If Bank Transfer: save recipient name + account number on the client record.
+      // If Bank Transfer: save the recipient's bank-transfer details into
+      // bank_accounts (no longer written to the client record). Composite PK is
+      // (acc_number, vbcode) = (recipient account number, this village's vbCode).
+      // bank_acc_number = the source/internal account the money was paid from.
       // Must run BEFORE any early return so it always executes.
       if (
         dto.paymentMethod === PaymentMethod.BankTransfer &&
-        ownerRow &&
-        (dto.requestName?.trim() || dto.requestAccNumber?.trim())
+        dto.requestAccNumber?.trim()
       ) {
-        await tx.client.update({
-          where: { id: ownerRow.clientId },
-          data: {
-            requestName:      dto.requestName?.trim()      || null,
-            requestAccNumber: dto.requestAccNumber?.trim() || null,
-          },
-        });
+        const recipientAcc = dto.requestAccNumber.trim();
+        const key = {
+          accNumber_vbCode: { accNumber: recipientAcc, vbCode: account.vbCode },
+        };
+        // The request data we want this row to hold.
+        const desired = {
+          accName:       dto.requestName?.trim() || null,
+          bankName:      dto.bankName?.trim()     || null,
+          bankAccNumber: account.accNumber.trim(),
+          description:   paymentDescription,
+        };
+
+        const existing = await tx.bankAccount.findUnique({ where: key });
+        if (!existing) {
+          // No row yet → insert (need_sync = 'i').
+          await tx.bankAccount.create({
+            data: {
+              accNumber: recipientAcc,
+              vbCode:    account.vbCode,
+              ...desired,
+              statusId:  '1',          // status_id = 1 (active)
+              needSync:  'i',          // 'i' = inserted (needs sync upstream)
+              lastUpdate: now,
+            },
+          });
+        } else {
+          // Row exists → only update when a request value actually changed,
+          // and mark it need_sync = 'u'. If everything is identical, do nothing.
+          const changed =
+            (existing.accName ?? null)       !== desired.accName ||
+            (existing.bankName ?? null)      !== desired.bankName ||
+            (existing.bankAccNumber ?? null) !== desired.bankAccNumber ||
+            (existing.description ?? null)   !== desired.description;
+          if (changed) {
+            await tx.bankAccount.update({
+              where: key,
+              data: { ...desired, needSync: 'u', lastUpdate: now },
+            });
+          }
+        }
       }
 
       // Pay off the FULL overdue balance. Zero the current_balance of EVERY
@@ -815,7 +844,12 @@ export class VillageDataService {
   // pay it out, instead of a fixed amount.
   async getBalance(
     accNumber: string,
-  ): Promise<{ accNumber: string; vbCode: string; currentBalance: number }> {
+  ): Promise<{
+    accNumber: string;
+    vbCode: string;
+    currentBalance: number;
+    requestName: string | null;
+  }> {
     const account = await this.prisma.accounts.findUnique({
       where: { accNumber },
       select: { accNumber: true, vbCode: true, currentBalance: true },
@@ -826,11 +860,70 @@ export class VillageDataService {
         message: `Account ${accNumber} not found`,
       });
     }
+
+    // Resolve the client (via account_owner) to surface its request_name so the
+    // checkout screen can show/edit it.
+    const ownerRow = await this.prisma.accountOwner.findFirst({
+      where: { accNumber: account.accNumber, vbCode: account.vbCode },
+      select: { client: { select: { requestName: true } } },
+    });
+
     return {
       accNumber: account.accNumber.trim(),
       vbCode: account.vbCode.trim(),
       currentBalance: Number(account.currentBalance),
+      requestName: ownerRow?.client?.requestName ?? null,
     };
+  }
+
+  // Update a client's request_name (resolved via account_owner). Returns
+  // `changed: false` without writing when the new name equals the stored one,
+  // so the app can warn "name unchanged" instead of showing a success toast.
+  async updateClientRequestName(
+    accNumber: string,
+    requestName: string,
+    vbCode?: string,
+  ): Promise<{ requestName: string | null; changed: boolean }> {
+    const account = await this.prisma.accounts.findUnique({
+      where: { accNumber },
+      select: { accNumber: true, vbCode: true },
+    });
+    if (!account) {
+      throw new NotFoundException({
+        code: 'ACCOUNT_NOT_FOUND',
+        message: `Account ${accNumber} not found`,
+      });
+    }
+    if (vbCode && vbCode.trim() && vbCode.trim() !== account.vbCode.trim()) {
+      throw new BadRequestException({
+        code: 'VBCODE_MISMATCH',
+        message: 'vbCode does not match this account',
+      });
+    }
+
+    const ownerRow = await this.prisma.accountOwner.findFirst({
+      where: { accNumber: account.accNumber, vbCode: account.vbCode },
+      select: { clientId: true, client: { select: { requestName: true } } },
+    });
+    if (!ownerRow) {
+      throw new NotFoundException({
+        code: 'CLIENT_NOT_FOUND',
+        message: `No client found for account ${accNumber}`,
+      });
+    }
+
+    const newName = requestName.trim();
+    const current = (ownerRow.client?.requestName ?? '').trim();
+    if (newName === current) {
+      // Nothing to do — same name. No write.
+      return { requestName: ownerRow.client?.requestName ?? null, changed: false };
+    }
+
+    await this.prisma.client.update({
+      where: { id: ownerRow.clientId },
+      data: { requestName: newName || null, needSync: 'u' },
+    });
+    return { requestName: newName || null, changed: true };
   }
 
   // ── 3e2. Find account owner by account number ────────────────────────────────

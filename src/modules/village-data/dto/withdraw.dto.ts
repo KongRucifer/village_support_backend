@@ -45,9 +45,17 @@ export class WithdrawDto {
 
   @ApiPropertyOptional({
     example: '010100100000001',
-    description: 'ເລກບັນຊີຜູ້ຮັບ (Bank Transfer only) — saved to client.request_acc_number',
+    description: 'ເລກບັນຊີຜູ້ຮັບ (Bank Transfer only) — saved to bank_accounts.acc_number',
   })
   @IsOptional()
   @IsString()
   requestAccNumber?: string;
+
+  @ApiPropertyOptional({
+    example: 'BCEL',
+    description: 'ຊື່ທະນາຄານ (Bank Transfer only) — saved to bank_accounts.bank_name',
+  })
+  @IsOptional()
+  @IsString()
+  bankName?: string;
 }
