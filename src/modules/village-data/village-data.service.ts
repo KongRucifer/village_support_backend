@@ -421,6 +421,29 @@ export class VillageDataService {
       });
     }
 
+    // ── 1c. Cycle guard ───────────────────────────────────────────────────────
+    // If this account belongs to a payout cycle (a cycles_detail row maps the
+    // acc_number → a cycles_id), that cycle must still be OPEN (cycles.status_id
+    // == '2'). Any other status means the cycle has expired and the payout is
+    // blocked. The cycle name is returned so the client can show which cycle.
+    const cycleDetail = await this.prisma.cyclesDetail.findFirst({
+      where: { accNumber: account.accNumber },
+      select: { cyclesId: true },
+    });
+    if (cycleDetail) {
+      const cycle = await this.prisma.cycles.findUnique({
+        where: { cyclesId: cycleDetail.cyclesId },
+        select: { cyclesName: true, statusId: true },
+      });
+      if (cycle && cycle.statusId?.trim() !== '2') {
+        throw new BadRequestException({
+          code: 'CYCLE_EXPIRED',
+          message: `Cannot pay out — cycle "${cycle.cyclesName}" has expired`,
+          cycleName: cycle.cyclesName,
+        });
+      }
+    }
+
     // ── 1b. Check-in / check-out guards DISABLED ──────────────────────────────
     // Checkout no longer depends on a prior check-in, and no longer writes to the
     // vbc_arrangement table at all. The guards (ALREADY_CHECKED_OUT /
@@ -521,9 +544,61 @@ export class VillageDataService {
         ? 'disbursement money for member by Bank Transfer'
         : 'disbursement money for member by Cash';
 
+    const isBankTransfer = dto.paymentMethod === PaymentMethod.BankTransfer;
+
     // ── 4. Execute all writes atomically (interactive transaction) ────────────
     const arrangementId = await this.prisma.$transaction(async (tx) => {
-      // Always: update the savings balance.
+      // ── Bank Transfer: ONLY insert the recipient's bank-transfer row ─────────
+      // No balance deduction, no 3101 transaction, no cash-book entry, and no
+      // arrangement update. Composite PK is (acc_number, vbcode) = (client's own
+      // account number, this village's vbCode). The recipient account typed in
+      // the request is stored in bank_acc_number.
+      if (isBankTransfer) {
+        const key = {
+          accNumber_vbCode: {
+            accNumber: account.accNumber.trim(),
+            vbCode: account.vbCode,
+          },
+        };
+        const existing = await tx.bankAccount.findUnique({ where: key });
+        if (existing) {
+          // Re-activatable ONLY when status is '2' AND it was already synced
+          // (need_sync == 'u'): flip need_sync back to 'i' so it is re-sent
+          // upstream. Any other state (need_sync already 'i', or status != '2')
+          // means it was already scanned → block.
+          if (
+            existing.statusId?.trim() === '2' &&
+            existing.needSync?.trim() === 'u'
+          ) {
+            await tx.bankAccount.update({
+              where: key,
+              data: { needSync: 'i', lastUpdate: now },
+            });
+            return null;
+          }
+          throw new BadRequestException({
+            code: 'ALREADY_SCANNED',
+            message: 'This account has already been scanned.',
+          });
+        }
+        await tx.bankAccount.create({
+          data: {
+            accNumber:     account.accNumber.trim(),       // PK part: client account
+            vbCode:        account.vbCode,                 // PK part: vbCode
+            accName:       dto.requestName?.trim()      || null, // recipient name
+            bankName:      dto.bankName?.trim()         || null, // bank name
+            bankAccNumber: dto.requestAccNumber?.trim() || null, // recipient acc no
+            description:   paymentDescription,
+            statusId:      '2',   // status_id = 2
+            needSync:      'i',   // 'i' = inserted (needs sync upstream)
+            lastUpdate:    now,
+          },
+        });
+        return null; // arrangementId not applicable for a bank transfer
+      }
+
+      // ── Cash: full checkout writes ───────────────────────────────────────────
+      // Update the savings balance.
       await tx.accounts.update({
         where: { accNumber },
         data: { currentBalance: newBalance, lastUpdate: now },
@@ -583,60 +658,6 @@ export class VillageDataService {
         },
       });
 
-      // If Bank Transfer: save the recipient's bank-transfer details into
-      // bank_accounts (no longer written to the client record). Composite PK is
-      // (acc_number, vbcode) = (recipient account number, this village's vbCode).
-      // bank_acc_number = the source/internal account the money was paid from.
-      // Must run BEFORE any early return so it always executes.
-      if (
-        dto.paymentMethod === PaymentMethod.BankTransfer &&
-        dto.requestAccNumber?.trim()
-      ) {
-        // Key the row on the CLIENT's own account number (from the accounts
-        // table) + vbCode. The recipient account typed in the request is stored
-        // in bank_acc_number instead.
-        const clientAcc = account.accNumber.trim();
-        const key = {
-          accNumber_vbCode: { accNumber: clientAcc, vbCode: account.vbCode },
-        };
-        // The request data we want this row to hold.
-        const desired = {
-          accName:       dto.requestName?.trim() || null,
-          bankName:      dto.bankName?.trim()     || null,
-          bankAccNumber: dto.requestAccNumber.trim(),  // recipient acc from request
-          description:   paymentDescription,
-        };
-
-        const existing = await tx.bankAccount.findUnique({ where: key });
-        if (!existing) {
-          // No row yet → insert (need_sync = 'i').
-          await tx.bankAccount.create({
-            data: {
-              accNumber: clientAcc,
-              vbCode:    account.vbCode,
-              ...desired,
-              statusId:  '1',          // status_id = 1 (active)
-              needSync:  'i',          // 'i' = inserted (needs sync upstream)
-              lastUpdate: now,
-            },
-          });
-        } else {
-          // Row exists → only update when a request value actually changed,
-          // and mark it need_sync = 'u'. If everything is identical, do nothing.
-          const changed =
-            (existing.accName ?? null)       !== desired.accName ||
-            (existing.bankName ?? null)      !== desired.bankName ||
-            (existing.bankAccNumber ?? null) !== desired.bankAccNumber ||
-            (existing.description ?? null)   !== desired.description;
-          if (changed) {
-            await tx.bankAccount.update({
-              where: key,
-              data: { ...desired, needSync: 'u', lastUpdate: now },
-            });
-          }
-        }
-      }
-
       // Pay off the FULL overdue balance. Zero the current_balance of EVERY
       // arrangement row for this account+vbCode (the client sends the overdue
       // total as dto.amount, which equals the sum of these balances). Do NOT
@@ -666,16 +687,6 @@ export class VillageDataService {
         arrId = Number(latestArr.id);
       }
 
-      // ── vbc_arrangement write DISABLED (commented out, not deleted) ─────────
-      // We no longer touch the vbc_arrangement table on checkout (check-in is
-      // gone). The updateMany that used to mark leftover unpaid check-ins as
-      // checked-out is commented out below so it can be restored if needed.
-      //
-      // await tx.vbc_arrangement.updateMany({
-      //   where: { vbcode: vbCode, bankbooknumber: bankbook, need_sync: 'i' },
-      //   data: { points: 0, need_sync: 'u', last_update: now },
-      // });
-
       return arrId;
     });
 
@@ -683,7 +694,8 @@ export class VillageDataService {
       accNumber: account.accNumber.trim(),
       vbCode: account.vbCode.trim(),
       amount: dto.amount,
-      currentBalance: Number(newBalance),
+      // Bank transfer does not deduct → balance is unchanged. Cash → reduced.
+      currentBalance: Number(isBankTransfer ? account.currentBalance : newBalance),
       transactionId: txId,
       arrangementId,
       paymentMethod: dto.paymentMethod,
@@ -1194,6 +1206,18 @@ export class VillageDataService {
     // the vbCode onto these to build debit/credit numbers for pending rows.
     withdrawDebitBase: string;
     withdrawCreditBase: string;
+    // Payout cycles + their per-account detail rows, so the offline client can
+    // enforce the same "cycle must be open" guard the backend applies on payout.
+    cycles: { cyclesId: number; cyclesName: string; statusId: string | null }[];
+    cyclesDetails: { cyclesId: number; accNumber: string }[];
+    // Existing bank_accounts rows (status + need_sync by account) so the offline
+    // client can enforce the same "already scanned" guard for Bank Transfer.
+    bankAccounts: {
+      accNumber: string;
+      vbCode: string;
+      statusId: string | null;
+      needSync: string | null;
+    }[];
   }> {
     const serverTime = new Date().toISOString();
     const sinceDate = since ? new Date(since) : null;
@@ -1223,6 +1247,9 @@ export class VillageDataService {
       cashRows,
       overdueSumRows,
       overdueCntRows,
+      cycleRows,
+      cycleDetailRows,
+      bankAccountRows,
     ] = await Promise.all([
       this.prisma.vbCode.findMany({
         // Only ACTIVE village banks (villagebank.status_id == '2') — matches the
@@ -1314,6 +1341,18 @@ export class VillageDataService {
         WHERE need_sync = 'i'
         GROUP BY bankbooknumber, vbcode
       `,
+      // Payout cycles (full set — small table) for the offline cycle guard.
+      this.prisma.cycles.findMany({
+        select: { cyclesId: true, cyclesName: true, statusId: true },
+      }),
+      // Cycle → account mappings (full set) for the offline cycle guard.
+      this.prisma.cyclesDetail.findMany({
+        select: { cyclesId: true, accNumber: true },
+      }),
+      // Existing bank_accounts rows for the offline "already scanned" guard.
+      this.prisma.bankAccount.findMany({
+        select: { accNumber: true, vbCode: true, statusId: true, needSync: true },
+      }),
     ]);
 
     // Map vbCode → cash-on-hand sum for quick lookup when building vbCode items.
@@ -1409,6 +1448,21 @@ export class VillageDataService {
       })),
       withdrawDebitBase: withdrawTxCode?.debitAccNumber?.trim() ?? '',
       withdrawCreditBase: withdrawTxCode?.creditAccNumber?.trim() ?? '',
+      cycles: cycleRows.map((r) => ({
+        cyclesId: r.cyclesId,
+        cyclesName: r.cyclesName,
+        statusId: r.statusId?.trim() ?? null,
+      })),
+      cyclesDetails: cycleDetailRows.map((r) => ({
+        cyclesId: r.cyclesId,
+        accNumber: r.accNumber.trim(),
+      })),
+      bankAccounts: bankAccountRows.map((r) => ({
+        accNumber: r.accNumber.trim(),
+        vbCode: r.vbCode.trim(),
+        statusId: r.statusId?.trim() ?? null,
+        needSync: r.needSync?.trim() ?? null,
+      })),
     };
   }
 }

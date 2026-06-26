@@ -432,6 +432,32 @@ model BankAccount {
   @@map("bank_accounts")
 }
 
+// A savings/payout cycle. One cycle has many detail rows, each pointing at an
+// account number.
+model Cycles {
+  cyclesId   Int            @id(map: "cycles_pk") @default(autoincrement()) @map("cycles_id")
+  cyclesName String         @map("cycles_name") @db.VarChar(255)
+  startDate  DateTime?      @map("start_date") @db.Date
+  endDate    DateTime?      @map("end_date") @db.Date
+  amount     Decimal?       @db.Decimal
+  statusId   String?        @map("status_id") @db.Char(2)
+  needSync   String?        @map("need_sync") @db.Char(1)
+  details    CyclesDetail[]
+
+  @@map("cycles")
+}
+
+// Per-account rows belonging to a cycle.
+model CyclesDetail {
+  id        Int    @id(map: "cycles_detail_pk") @default(autoincrement())
+  cyclesId  Int    @map("cycles_id")
+  accNumber String @map("acc_number") @db.Char(15)
+  cycle     Cycles @relation(fields: [cyclesId], references: [cyclesId], onUpdate: Restrict, map: "FK_cycles_detail_cycles")
+
+  @@index([cyclesId], map: "fkIdx_cycles_detail_cycles")
+  @@map("cycles_detail")
+}
+
 model ClientAccount {
   bankbookNumber String         @map("bankbooknumber") @db.VarChar(5)
   vbCode         String         @map("vbcode") @db.VarChar(7)
